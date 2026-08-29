@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>塔科夫跳蚤行情 · Tarkov Market Ticker</title>
+<meta name="description" content="逃离塔科夫跳蚤市场价格监控：实时均价 / 24h最低 / 48h涨跌 / 商人套利利润查询">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <div>
+      <h1>塔科夫跳蚤行情</h1>
+      <span class="sub">TARKOV MARKET TICKER</span>
+    </div>
+  </div>
+  <div class="status">
+    <span class="update-time" id="lastUpdate">--:--:--</span>
+    <span class="spacer"></span>
+    <span id="gameVersion">连接中...</span>
+    <button id="btnRefresh" class="btn">刷新</button>
+  </div>
+</header>
+
+<!-- 顶部广告位：部署后把本行替换为 AdSense 广告代码 -->
+<div class="ad-slot" id="ad-top">AD · 广告位（替换为 AdSense 代码，见 README）</div>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="watch">自选</button>
+  <button class="tab" data-tab="hot">热榜</button>
+  <button class="tab" data-tab="arb">套利</button>
+</nav>
+
+<main>
+  <section id="panel-watch" class="panel active">
+    <div class="toolbar">
+      <input id="searchInput" type="text" placeholder="搜索物品名加入自选，如：bitcoin / gpu / ledx...">
+      <button id="btnAdd" class="btn">加入自选</button>
+      <span class="hint" id="watchHint"></span>
+    </div>
+    <table class="grid">
+      <thead>
+        <tr><th>物品</th><th>类型</th><th>均价 24h</th><th>最低 24h</th><th>涨跌 48h</th><th>在售</th><th></th></tr>
+      </thead>
+      <tbody id="watchBody"></tbody>
+    </table>
+  </section>
+
+  <section id="panel-hot" class="panel">
+    <p class="legend">按 48h 涨跌幅度排序（绝对波动），热度最高的前 30 件。</p>
+    <table class="grid">
+      <thead>
+        <tr><th>物品</th><th>类型</th><th>均价 24h</th><th>最低 24h</th><th>涨跌 48h</th><th>在售</th></tr>
+      </thead>
+      <tbody id="hotBody"></tbody>
+    </table>
+  </section>
+
+  <section id="panel-arb" class="panel">
+    <p class="legend">按「商人最高收购价 − 跳蚤最低价」计算单件利润，仅展示正利润项，已排除黑商 Fence。仅供参考，实际成交受手续费影响。</p>
+    <table class="grid">
+      <thead>
+        <tr><th>物品</th><th>跳蚤最低</th><th>商人最高</th><th>单件利润</th><th>在售</th></tr>
+      </thead>
+      <tbody id="arbBody"></tbody>
+    </table>
+  </section>
+</main>
+
+<!-- 底部广告位：部署后把本行替换为 AdSense 广告代码 -->
+<div class="ad-slot" id="ad-bottom">AD · 广告位（替换为 AdSense 代码，见 README）</div>
+
+<footer>
+  <p>数据来源 <a href="https://tarkov.dev" target="_blank" rel="noopener">tarkov.dev</a>（社区公开 API）· 本工具仅供游戏参考，与 Battlestate Games 无关</p>
+  <p><a href="privacy-policy.html">隐私政策</a></p>
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>

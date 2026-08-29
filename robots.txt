@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://你的域名/sitemap.xml
+（内容由AI生成，仅供参考）
