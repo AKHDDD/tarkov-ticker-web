@@ -141,15 +141,15 @@ body {
 
 /* ---- 物品图标 ---- */
 .ico {
-  width: 22px; height: 22px;
-  margin-right: 6px;
+  width: 34px; height: 34px;
+  margin-right: 8px;
   vertical-align: middle;
-  border-radius: 3px;
+  border-radius: 4px;
   object-fit: contain;
   background: #0f130b;
   border: 1px solid #2a3220;
 }
-.ico-empty { display: inline-block; width: 22px; height: 22px; margin-right: 6px; vertical-align: middle; }
+.ico-empty { display: inline-block; width: 34px; height: 34px; margin-right: 8px; vertical-align: middle; }
 
 /* ---- 高点预警 ---- */
 .badge {
@@ -189,4 +189,5 @@ footer a { color: var(--sand); }
   #panel-watch .grid th:nth-child(4), #panel-watch .grid td:nth-child(4),
   #panel-hot .grid th:nth-child(4), #panel-hot .grid td:nth-child(4) { display: none; }
   .brand h1 { font-size: 16px; }
+  .ico, .ico-empty { width: 26px; height: 26px; }
 }
