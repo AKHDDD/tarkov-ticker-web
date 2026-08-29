@@ -96,6 +96,26 @@ body {
 /* ---- 类型筛选条 ---- */
 .filterbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .filterbar label { color: var(--dim); font-size: 13px; letter-spacing: 1px; }
+/* 服务器切换按钮组 */
+.mode-group { display: inline-flex; gap: 0; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.mode-btn {
+  background: var(--panel);
+  color: var(--dim);
+  border: none;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+.mode-btn + .mode-btn { border-left: 1px solid var(--border); }
+.mode-btn:hover { filter: brightness(1.15); }
+.mode-btn.active {
+  background: var(--accent);
+  color: #101408;
+  font-weight: bold;
+}
+.mode-sep { width: 1px; height: 22px; background: var(--border); }
 .filterbar select {
   background: var(--panel);
   color: var(--text);

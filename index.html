@@ -8,7 +8,7 @@
 <meta http-equiv="Expires" content="0">
 <title>塔科夫跳蚤行情 · Tarkov Market Ticker</title>
 <meta name="description" content="逃离塔科夫跳蚤市场价格监控：实时均价 / 24h低点高点 / 48h涨跌 / 商人套利利润 / 自选高点预警查询">
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
 </head>
 <body>
 
@@ -39,11 +39,17 @@
 </nav>
 
 <div class="filterbar">
+  <span class="mode-group" role="group" aria-label="服务器切换">
+    <button class="mode-btn active" data-mode="regular">PvP永久服</button>
+    <button class="mode-btn" data-mode="pve">PvE服</button>
+    <button class="mode-btn" data-mode="pvp-season">PvP赛季服</button>
+  </span>
+  <span class="mode-sep"></span>
   <label for="typeFilter">游戏内分类</label>
   <select id="typeFilter">
     <option value="">全部类型</option>
   </select>
-  <span class="hint">按游戏内物品栏分类（交换用物品 / 装备 / 武器零件&配件 / 武器 / 弹药 / 饮食 / 医疗物品 / 钥匙 / 情报物品 / 特殊装备 等）筛选，自选 / 热榜 / 套利仅显示该分类</span>
+  <span class="hint">三服（PvP永久 / PvE / PvP赛季）跳蚤行情各自独立，价格不同；切换服务器后自动重新拉取。按游戏内物品栏分类（交换用物品 / 装备 / 武器零件&配件 / 武器 / 弹药 / 饮食 / 医疗物品 / 钥匙 / 情报物品 / 特殊装备 等）筛选，自选 / 热榜 / 套利仅显示该分类</span>
 </div>
 
 <main>
@@ -98,6 +104,6 @@
   <p><a href="privacy-policy.html">隐私政策</a></p>
 </footer>
 
-<script src="js/app.js?v=9"></script>
+<script src="js/app.js?v=10"></script>
 </body>
 </html>

@@ -9,10 +9,17 @@
         ④ 套利用 REST 的 sellToTrader（商人收购价）计算，排除黑商 Fence。
    ============================================================ */
 
-const API = "https://json.tarkov.dev/regular/items";  // 直连 REST，时间戳参数破 CDN 缓存
+const API_BASE = "https://json.tarkov.dev"; // REST 直连根地址，路径按服务器区分
+const GAME_MODES = {           // 三服（tarkov.dev 的 gameMode 路径段）
+  "regular":    "PvP永久服",
+  "pve":        "PvE服",
+  "pvp-season": "PvP赛季服"
+};
+let gameMode = "regular";      // 当前服务器，切换后重新拉取对应行情
+const apiUrl = () => `${API_BASE}/${gameMode}/items`; // 直连 REST，时间戳参数破 CDN 缓存
 const REFRESH_MS = 5 * 60 * 1000;   // 全量约 16MB，每 5 分钟自动刷新
 const STALE_TTL_MS = 30 * 60 * 1000; // 本地缓存最长容忍 30 分钟（拉取失败时降级用）
-const CACHE_KEY = "tw_items_cache_v3"; // 裁剪后行情缓存（v3：新增游戏内 Handbook 分类，需刷新旧缓存）
+const CACHE_KEY = () => "tw_items_cache_v3_" + gameMode; // 裁剪后行情缓存（v3：游戏内 Handbook 分类；_<服>：三服各自独立缓存）
 const TOP_N = 30;                   // 热榜/套利展示条数
 const LS_KEY = "tw_watchlist_v2";   // 自选清单存储 key（v2：旧 v1 存的是占位符乱码名，弃用）
 const FENCE_ID = "579dc571d53a0658a154fbec"; // 黑商 Fence 的 tarkov.dev trader id（套利排除）
@@ -265,10 +272,10 @@ function toItem(it) {
 function fromDict(dict) {
   return Object.keys(dict || {}).map(id => toItem(dict[id]));
 }
-// 本地缓存读写（裁剪后体积小，远低于 localStorage 5MB 上限）
+// 本地缓存读写（裁剪后体积小，远低于 localStorage 5MB 上限；按服隔离）
 function readCache() {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(CACHE_KEY());
     if (!raw) return null;
     const c = JSON.parse(raw);
     if (!c || !Array.isArray(c.items) || c.items.length === 0) return null;
@@ -277,13 +284,13 @@ function readCache() {
 }
 function writeCache(arr) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), items: arr }));
+    localStorage.setItem(CACHE_KEY(), JSON.stringify({ ts: Date.now(), items: arr }));
   } catch (e) { /* 存储满/禁用时忽略 */ }
 }
 
 // 拉取最新数据（返回 { items, stale }）；失败时若本地缓存未超容忍期则降级复用
 async function fetchLatest() {
-  const res = await fetch(API + "?v=" + Date.now(), { cache: "no-store" });
+  const res = await fetch(apiUrl() + "?v=" + Date.now(), { cache: "no-store" });
   if (!res.ok) throw new Error("HTTP " + res.status);
   const j = await res.json();
   const dict = (j && j.data && j.data.items) || null;
@@ -421,7 +428,7 @@ async function load() {
     items = freshCache;
     markChanges();
     renderWatch(); renderHot(); renderArb(); collectTypes();
-    $("gameVersion").textContent = freshCache.length + " 件物品（缓存）";
+    $("gameVersion").textContent = GAME_MODES[gameMode] + " · " + freshCache.length + " 件物品（缓存）";
     $("lastUpdate").textContent = now();
   }
   btn.disabled = true;
@@ -429,18 +436,29 @@ async function load() {
   try {
     const r = await fetchItems();
     markChanges();
-    $("gameVersion").textContent = r.n + " 件物品" + (r.stale ? "（离线降级）" : "");
+    $("gameVersion").textContent = GAME_MODES[gameMode] + " · " + r.n + " 件物品" + (r.stale ? "（离线降级）" : "");
     $("lastUpdate").textContent = now();
     if (r.stale) console.warn("拉取失败，使用本地缓存:", r.err);
     renderWatch(); renderHot(); renderArb(); collectTypes();
   } catch (e) {
     if (!freshCache) {
-      $("gameVersion").textContent = "加载失败: " + e.message;
+      $("gameVersion").textContent = GAME_MODES[gameMode] + " 加载失败: " + e.message;
       console.error(e);
     }
   }
   btn.disabled = false;
   btn.textContent = "刷新";
+}
+
+/* ---- 服务器切换：清空旧服数据，重新拉取当前服行情 ---- */
+function setGameMode(mode) {
+  if (mode === gameMode) return;
+  gameMode = mode;
+  items = [];       // 清空旧服数据，防止跨服串数据
+  prevPrice = {};   // 重置价格变动对比，避免跨服误报跳动
+  $("gameVersion").textContent = GAME_MODES[gameMode] + " · 切换中...";
+  renderWatch(); renderHot(); renderArb();
+  load();           // 重新拉取当前服（有该服缓存则秒出）
 }
 
 /* ---- Tab 切换 ---- */
@@ -457,6 +475,15 @@ document.querySelectorAll(".tab").forEach(tab => {
 $("btnRefresh").addEventListener("click", load);
 $("btnAdd").addEventListener("click", addToWatch);
 $("searchInput").addEventListener("keydown", e => { if (e.key === "Enter") addToWatch(); });
+/* 服务器切换：三服按钮组 */
+document.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (btn.dataset.mode === gameMode) return;
+    document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    setGameMode(btn.dataset.mode);
+  });
+});
 /* 类型筛选：选中后三表按类型过滤 */
 $("typeFilter").addEventListener("change", e => {
   typeFilter = e.target.value;
