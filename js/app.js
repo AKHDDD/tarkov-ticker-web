@@ -9,13 +9,26 @@
 const API = "https://json.tarkov.dev/regular/items";          // REST 主数据（gzip/br 压缩后约 1.3MB）
 const TRANS_API = "https://json.tarkov.dev/regular/items_en"; // 英文翻译表（本地化物品名）
 const FENCE_ID = "579dc571d53a0658a154fbec";                  // 黑商 Fence 的 trader ID（套利时排除）
-const REFRESH_MS = 5 * 60 * 1000;   // 默认 5 分钟自动刷新
+const REFRESH_MS = 2 * 60 * 1000;   // 每 2 分钟自动刷新（数据源为快照级，过频无意义）
 const TOP_N = 30;                   // 热榜/套利展示条数
 const LS_KEY = "tw_watchlist";      // 自选清单存储 key
 
 let items = [];
 let watch = [];
 try { watch = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch (e) { watch = []; }
+
+/* ---- 价格变动标记（刷新时对比上一次，实现"跳动"反馈） ---- */
+let prevPrice = {};   // shortName -> 上一次的当前最低价 lastLowPrice
+function markChanges() {
+  const cur = {};
+  items.forEach(i => { cur[i.shortName] = i.lastLowPrice || 0; });
+  items.forEach(i => {
+    const p = prevPrice[i.shortName];
+    const n = cur[i.shortName];
+    i._chg = (p != null && p > 0 && n > 0 && p !== n) ? (n > p ? "up" : "down") : "";
+  });
+  prevPrice = cur;
+}
 
 /* ---- 工具函数 ---- */
 const $ = id => document.getElementById(id);
@@ -102,7 +115,7 @@ function renderWatch() {
       <td>${fmt(i.avg24hPrice)}</td>
       <td>${fmt(i.low24hPrice)}</td>
       <td>${fmt(i.high24hPrice)}</td>
-      <td>${fmt(i.lastLowPrice)}</td>
+      <td class="${i._chg ? "f-" + i._chg : ""}">${fmt(i.lastLowPrice)}</td>
       <td class="${cls(c)}">${pct(c)}</td>
       <td>${fmt(i.lastOfferCount)}</td>
       <td><button class="del" data-rm="${esc(i.shortName)}">✕</button></td>
@@ -141,7 +154,7 @@ function renderHot() {
       <td>${fmt(i.avg24hPrice)}</td>
       <td>${fmt(i.low24hPrice)}</td>
       <td>${fmt(i.high24hPrice)}</td>
-      <td>${fmt(i.lastLowPrice)}</td>
+      <td class="${i._chg ? "f-" + i._chg : ""}">${fmt(i.lastLowPrice)}</td>
       <td class="${cls(c)}">${pct(c)}</td>
       <td>${fmt(i.lastOfferCount)}</td>
     </tr>`;
@@ -194,6 +207,7 @@ async function load() {
   btn.textContent = "同步中";
   try {
     const n = await fetchItems();
+    markChanges();
     $("gameVersion").textContent = n + " 件物品";
     $("lastUpdate").textContent = now();
     renderWatch(); renderHot(); renderArb();

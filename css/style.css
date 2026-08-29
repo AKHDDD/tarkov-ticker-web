@@ -130,6 +130,12 @@ body {
 
 .up { color: var(--green); }
 .down { color: var(--red); }
+
+/* ---- 刷新跳动反馈（价格变动时闪烁） ---- */
+@keyframes flash-up { 0% { background: rgba(95,191,79,.5); color: #eaffd9; } 100% { background: transparent; } }
+@keyframes flash-down { 0% { background: rgba(224,82,82,.5); color: #ffe3e3; } 100% { background: transparent; } }
+.f-up { animation: flash-up 1.2s ease-out; }
+.f-down { animation: flash-down 1.2s ease-out; }
 .profit-pos { color: var(--green); font-weight: bold; }
 .del {
   background: none; border: none; color: var(--dim);
