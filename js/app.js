@@ -118,11 +118,15 @@ const cls = n => (n == null || n === 0) ? "" : (n > 0 ? "up" : "down");
 const esc = s => String(s).replace(/[&<>"']/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const typeCn = t => ({
-  weapon: "武器", ammo: "弹药", armor: "护甲", gear: "装备", keys: "钥匙",
-  medical: "医疗", food: "食物", drink: "饮品", stimulant: "药剂",
+  weapon: "武器", gun: "武器", ammo: "弹药", ammoBox: "弹药", armor: "护甲",
+  armorPlate: "护甲", gear: "装备", keys: "钥匙", medical: "医疗", meds: "医疗",
+  food: "食物", drink: "饮品", stimulant: "药剂", injectors: "注射器",
   backpack: "背包", rig: "胸挂", mods: "改装件", barter: "杂物",
   "common loot": "杂物", "quest item": "任务", provisions: "补给",
-  special: "特殊", info: "信息", household: "家具"
+  special: "特殊", info: "信息", household: "家具",
+  container: "容器", glasses: "护目镜", grenade: "手雷", headphones: "耳机",
+  helmet: "头盔", noFlea: "禁售", poster: "海报", preset: "预设",
+  specialSlot: "特殊槽", wearable: "穿戴品"
 }[t] || t);
 
 /* ---- 类型筛选：从数据中收集类型下拉，选中后三表按类型过滤 ---- */
