@@ -235,6 +235,11 @@ const isPh = s => /^[0-9a-f]{24} (?:Name|ShortName)$/.test(String(s || ""));
 // 单条裁剪：只保留渲染所需字段，并计算套利（最高商人收购价 − 跳蚤最低价，排除 Fence）
 function toItem(it) {
   const price = Number(it.lastLowPrice) || 0;
+  // 涨跌失真保护：48h 前基价 ≤0（含负值，数据异常）或涨跌超过 ±1000% 时，
+  // 该百分比视为不可信（显示 "-"，且不参与热榜 chg 排序）
+  let chgPct = it.changeLast48hPercent ?? 0;
+  const chgAbs = Number(it.changeLast48h) || 0;
+  if (chgAbs !== 0 && (price - chgAbs <= 0 || Math.abs(chgPct) > 1000)) chgPct = null;
   let best = 0;
   for (const s of (it.sellToTrader || [])) {
     const v = String(s.trader || "");
@@ -258,7 +263,7 @@ function toItem(it) {
     low24hPrice: Number(it.low24hPrice) || 0,
     high24hPrice: Number(it.high24hPrice) || 0,
     lastLowPrice: price,
-    changeLast48hPercent: it.changeLast48hPercent ?? 0,
+    changeLast48hPercent: chgPct,
     lastOfferCount: it.lastOfferCount ?? 0,
     types: it.types || [],
     handbookCategories: it.handbookCategories || [],
