@@ -12,9 +12,9 @@
 const API = "https://json.tarkov.dev/regular/items";  // 直连 REST，时间戳参数破 CDN 缓存
 const REFRESH_MS = 5 * 60 * 1000;   // 全量约 16MB，每 5 分钟自动刷新
 const STALE_TTL_MS = 30 * 60 * 1000; // 本地缓存最长容忍 30 分钟（拉取失败时降级用）
-const CACHE_KEY = "tw_items_cache";  // 裁剪后行情缓存
+const CACHE_KEY = "tw_items_cache_v2"; // 裁剪后行情缓存（v2：REST 名字脱敏，需强制刷新旧占位数据）
 const TOP_N = 30;                   // 热榜/套利展示条数
-const LS_KEY = "tw_watchlist";      // 自选清单存储 key
+const LS_KEY = "tw_watchlist_v2";   // 自选清单存储 key（v2：旧 v1 存的是占位符乱码名，弃用）
 const FENCE_ID = "579dc571d53a0658a154fbec"; // 黑商 Fence 的 tarkov.dev trader id（套利排除）
 
 let items = [];
@@ -178,6 +178,21 @@ const alertBadge = st => st === "high" ? '<span class="badge b-high">▲高点</
 const alertCls = st => st === "high" ? "alert-high" : st === "near" ? "alert-near" : "";
 
 /* ---- 数据拉取：前端直连 REST（时间戳破 CDN 缓存）+ 本地缓存降级 ---- */
+// REST 对 name/shortName 脱敏为 "{id} Name/ShortName" 占位符，
+// 用 wikiLink（真实英文名）或 normalizedName（slug）还原可读物品名
+function realName(it) {
+  const w = it.wikiLink || "";
+  const m = w.match(/\/wiki\/([^/?#]+)/);
+  if (m) {
+    try {
+      const nm = decodeURIComponent(m[1]).replace(/_/g, " ").trim();
+      if (nm && nm !== it.id && !/ (?:Name|ShortName)$/.test(nm)) return nm;
+    } catch (e) { /* ignore */ }
+  }
+  const s = (it.normalizedName || "").replace(/-/g, " ").trim();
+  return (s && s !== it.id) ? s : "";
+}
+const isPh = s => /^[0-9a-f]{24} (?:Name|ShortName)$/.test(String(s || ""));
 // 单条裁剪：只保留渲染所需字段，并计算套利（最高商人收购价 − 跳蚤最低价，排除 Fence）
 function toItem(it) {
   const price = Number(it.lastLowPrice) || 0;
@@ -188,10 +203,17 @@ function toItem(it) {
     const p = Number(s.priceRUB ?? s.price) || 0;
     if (p > best) best = p;
   }
+  // 名字还原：上游脱敏成占位符时用真实物品名替换
+  let shortName = it.shortName || it.name || it.id;
+  let name = it.name || it.shortName || it.id;
+  if (isPh(name) || isPh(shortName)) {
+    const rn = realName(it);
+    if (rn) { shortName = rn; name = rn; }
+  }
   return {
     id: it.id,
-    shortName: it.shortName || it.name || it.id,
-    name: it.name || it.shortName || it.id,
+    shortName,
+    name,
     iconLink: it.iconLink || "",
     avg24hPrice: Number(it.avg24hPrice) || 0,
     low24hPrice: Number(it.low24hPrice) || 0,
