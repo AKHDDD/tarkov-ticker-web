@@ -93,6 +93,22 @@ body {
   border-color: var(--accent);
 }
 
+/* ---- 类型筛选条 ---- */
+.filterbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.filterbar label { color: var(--dim); font-size: 13px; letter-spacing: 1px; }
+.filterbar select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  max-width: 200px;
+}
+.filterbar select:focus { outline: none; border-color: var(--accent); }
+.filterbar .hint { color: var(--dim); font-size: 12px; }
+
 /* ---- 面板 ---- */
 .panel { display: none; }
 .panel.active { display: block; }

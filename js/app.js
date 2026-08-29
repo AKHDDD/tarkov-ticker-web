@@ -124,6 +124,37 @@ const typeCn = t => ({
   "common loot": "杂物", "quest item": "任务", provisions: "补给",
   special: "特殊", info: "信息", household: "家具"
 }[t] || t);
+
+/* ---- 类型筛选：从数据中收集类型下拉，选中后三表按类型过滤 ---- */
+let typeFilter = "";  // 当前选中的类型（中文名），空 = 全部
+// 常见类型优先排序，其余按拼音
+const TYPE_ORDER = ["武器", "弹药", "护甲", "装备", "钥匙", "医疗", "食物", "饮品",
+  "药剂", "背包", "胸挂", "改装件", "杂物", "任务", "补给", "特殊", "信息", "家具"];
+function collectTypes() {
+  const set = new Set();
+  items.forEach(i => {
+    const t = typeCn((i.types && i.types[0]) || "");
+    if (t) set.add(t);
+  });
+  const opts = [...set].sort((a, b) => {
+    const ia = TYPE_ORDER.indexOf(a), ib = TYPE_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b, "zh");
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  const sel = $("typeFilter");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">全部类型</option>' +
+    opts.map(t => `<option value="${esc(t)}">${t}</option>`).join("");
+  if (opts.includes(prev)) sel.value = prev; else sel.value = "";
+  typeFilter = sel.value;
+}
+function matchType(i) {
+  if (!typeFilter) return true;
+  return typeCn((i.types && i.types[0]) || "") === typeFilter;
+}
 const now = () => new Date().toLocaleTimeString("zh-CN", { hour12: false });
 
 /* ---- 物品图标 / 高点预警 ---- */
@@ -219,7 +250,7 @@ async function fetchItems() {
 /* ---- 渲染：自选 ---- */
 function renderWatch() {
   const body = $("watchBody");
-  const list = sortList(items.filter(i => watch.includes(i.shortName) || watch.includes(i.id)), WATCH_COLS, watchSort);
+  const list = sortList(items.filter(i => (watch.includes(i.shortName) || watch.includes(i.id)) && matchType(i)), WATCH_COLS, watchSort);
   if (list.length === 0) {
     body.innerHTML = '<tr><td colspan="9" class="empty">自选为空 — 搜索物品名加入</td></tr>';
     updateAlert();
@@ -258,7 +289,7 @@ function updateAlert() {
 /* ---- 渲染：热榜（表头可排序，默认按 48h 绝对波动） ---- */
 function renderHot() {
   const body = $("hotBody");
-  let list = items.filter(i => (i.lastLowPrice || 0) > 0);
+  let list = items.filter(i => (i.lastLowPrice || 0) > 0 && matchType(i));
   // "涨跌 48h"列保留无涨跌数据不进入列表（维持原热榜口径）
   if (hotSort.key === "chg") list = list.filter(i => i.changeLast48hPercent != null);
   list = sortList(list, HOT_COLS, hotSort).slice(0, TOP_N);
@@ -286,7 +317,7 @@ function renderHot() {
 /* ---- 渲染：套利（商人价 − 跳蚤最低价） ---- */
 function renderArb() {
   const body = $("arbBody");
-  const list = sortList(items.filter(i => i.profit > 0), ARB_COLS, arbSort).slice(0, TOP_N);
+  const list = sortList(items.filter(i => i.profit > 0 && matchType(i)), ARB_COLS, arbSort).slice(0, TOP_N);
   if (list.length === 0) {
     body.innerHTML = '<tr><td colspan="6" class="empty">当前无正利润套利项</td></tr>';
     return;
@@ -330,7 +361,7 @@ async function load() {
   if (freshCache && items.length === 0) {
     items = freshCache;
     markChanges();
-    renderWatch(); renderHot(); renderArb();
+    renderWatch(); renderHot(); renderArb(); collectTypes();
     $("gameVersion").textContent = freshCache.length + " 件物品（缓存）";
     $("lastUpdate").textContent = now();
   }
@@ -342,7 +373,7 @@ async function load() {
     $("gameVersion").textContent = r.n + " 件物品" + (r.stale ? "（离线降级）" : "");
     $("lastUpdate").textContent = now();
     if (r.stale) console.warn("拉取失败，使用本地缓存:", r.err);
-    renderWatch(); renderHot(); renderArb();
+    renderWatch(); renderHot(); renderArb(); collectTypes();
   } catch (e) {
     if (!freshCache) {
       $("gameVersion").textContent = "加载失败: " + e.message;
@@ -367,6 +398,11 @@ document.querySelectorAll(".tab").forEach(tab => {
 $("btnRefresh").addEventListener("click", load);
 $("btnAdd").addEventListener("click", addToWatch);
 $("searchInput").addEventListener("keydown", e => { if (e.key === "Enter") addToWatch(); });
+/* 类型筛选：选中后三表按类型过滤 */
+$("typeFilter").addEventListener("change", e => {
+  typeFilter = e.target.value;
+  renderWatch(); renderHot(); renderArb();
+});
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("del")) {
     const key = e.target.dataset.rm;
