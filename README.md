@@ -12,7 +12,10 @@ AIGC:
 # 塔科夫跳蚤行情 · Tarkov Market Ticker（网页版）
 
 纯静态网页行情站：实时均价 / 24h 最低 / 48h 涨跌 / 商人套利利润，支持自选清单（存浏览器本地）。
-数据来源 [tarkov.dev](https://tarkov.dev) 社区公开 GraphQL API（免费、无需 key、前端直连）。
+数据来源 [tarkov.dev](https://tarkov.dev) 社区公开 REST API（免费、无需 key、前端直连）。
+实现要点：REST 全量接口被 CDN 锁死 8 天缓存，前端用时间戳参数 `?v=<ts>` 绕过拿到实时价；
+全量约 16MB，裁剪字段后写入 localStorage（约 1.5MB），二次打开秒出、后台静默拉新，
+拉取失败降级用本地缓存（容忍 30 分钟）。无需任何后端 / Worker。
 
 ## 项目结构
 
@@ -72,8 +75,8 @@ tarkov-ticker-web/
 
 ## 维护
 
-- 改刷新频率：`js/app.js` 的 `REFRESH_MS`（单位毫秒，建议 ≥ 300000）
-- 改拉取物品数：`js/app.js` 的 `MAX_ITEMS`
+- 改刷新频率：`js/app.js` 的 `REFRESH_MS`（单位毫秒，建议 ≥ 300000，全量 16MB 不宜太频繁）
+- 改缓存容忍时长：`js/app.js` 的 `STALE_TTL_MS`
 - 自选清单：用户浏览器 localStorage 自动保存，无需后端
 
 ## 免责

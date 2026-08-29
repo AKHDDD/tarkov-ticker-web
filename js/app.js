@@ -1,15 +1,21 @@
 /* ============================================================
    塔科夫跳蚤行情 - 前端逻辑
-   数据源: 自建 Cloudflare Worker（合并 Tarkov-Market 实时价 + tarkov.dev 高低点）
-   Worker 已做字段精简、名称本地化、套利计算，前端只管渲染
-   注: 旧版直连 json.tarkov.dev REST 被 CDN 锁死（max-age 8天），
-       轮询再快也拿不到新数据，已切换到 Worker 方案
+   数据源: 前端直连 json.tarkov.dev REST（无需自建后端）
+   说明: ① REST 全量接口被 CDN 锁死 8 天缓存，用时间戳参数
+        (?v=<ts>) 绕过，实测可拿到实时数据（当天 updated）；
+        ② 全量响应约 16MB，故自动刷新间隔加大到 5 分钟；
+        ③ 首次同步后裁剪字段写入 localStorage，二次打开秒出数据，
+           后台再静默拉新；拉取失败降级用本地缓存（stale-while-error）；
+        ④ 套利用 REST 的 sellToTrader（商人收购价）计算，排除黑商 Fence。
    ============================================================ */
 
-const API = "https://YOUR_WORKER.workers.dev/";  // TODO: 部署 Worker 后替换为实际地址（见 README-WORKER.md）
-const REFRESH_MS = 30 * 1000;   // 每 30 秒自动刷新（Worker 边缘缓存决定新鲜度下限）
+const API = "https://json.tarkov.dev/regular/items";  // 直连 REST，时间戳参数破 CDN 缓存
+const REFRESH_MS = 5 * 60 * 1000;   // 全量约 16MB，每 5 分钟自动刷新
+const STALE_TTL_MS = 30 * 60 * 1000; // 本地缓存最长容忍 30 分钟（拉取失败时降级用）
+const CACHE_KEY = "tw_items_cache";  // 裁剪后行情缓存
 const TOP_N = 30;                   // 热榜/套利展示条数
 const LS_KEY = "tw_watchlist";      // 自选清单存储 key
+const FENCE_ID = "579dc571d53a0658a154fbec"; // 黑商 Fence 的 tarkov.dev trader id（套利排除）
 
 let items = [];
 let watch = [];
@@ -127,15 +133,78 @@ const alertBadge = st => st === "high" ? '<span class="badge b-high">▲高点</
   : st === "near" ? '<span class="badge b-near">▲近高</span>' : "";
 const alertCls = st => st === "high" ? "alert-high" : st === "near" ? "alert-near" : "";
 
-/* ---- 数据拉取 ---- */
-async function fetchItems() {
-  // Worker 统一返回精简行情数组（已合并实时价 + 高低点 + 套利，字段结构与旧版一致）
-  const res = await fetch(API, { cache: "no-cache" });
+/* ---- 数据拉取：前端直连 REST（时间戳破 CDN 缓存）+ 本地缓存降级 ---- */
+// 单条裁剪：只保留渲染所需字段，并计算套利（最高商人收购价 − 跳蚤最低价，排除 Fence）
+function toItem(it) {
+  const price = Number(it.lastLowPrice) || 0;
+  let best = 0;
+  for (const s of (it.sellToTrader || [])) {
+    const v = String(s.trader || "");
+    if (v === FENCE_ID) continue; // 排除黑商 Fence
+    const p = Number(s.priceRUB ?? s.price) || 0;
+    if (p > best) best = p;
+  }
+  return {
+    id: it.id,
+    shortName: it.shortName || it.name || it.id,
+    name: it.name || it.shortName || it.id,
+    iconLink: it.iconLink || "",
+    avg24hPrice: Number(it.avg24hPrice) || 0,
+    low24hPrice: Number(it.low24hPrice) || 0,
+    high24hPrice: Number(it.high24hPrice) || 0,
+    lastLowPrice: price,
+    changeLast48hPercent: it.changeLast48hPercent ?? 0,
+    lastOfferCount: it.lastOfferCount ?? 0,
+    types: it.types || [],
+    bestTrader: best,
+    traderName: "",
+    profit: price > 0 ? best - price : 0,
+    updated: it.updated || null,
+  };
+}
+// REST 全量字典 → 裁剪数组
+function fromDict(dict) {
+  return Object.keys(dict || {}).map(id => toItem(dict[id]));
+}
+// 本地缓存读写（裁剪后体积小，远低于 localStorage 5MB 上限）
+function readCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (!c || !Array.isArray(c.items) || c.items.length === 0) return null;
+    return c;
+  } catch (e) { return null; }
+}
+function writeCache(arr) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), items: arr }));
+  } catch (e) { /* 存储满/禁用时忽略 */ }
+}
+
+// 拉取最新数据（返回 { items, stale }）；失败时若本地缓存未超容忍期则降级复用
+async function fetchLatest() {
+  const res = await fetch(API + "?v=" + Date.now(), { cache: "no-store" });
   if (!res.ok) throw new Error("HTTP " + res.status);
   const j = await res.json();
-  const arr = Array.isArray(j) ? j : (j.items || []);
-  items = arr;
-  return items.length;
+  const dict = (j && j.data && j.data.items) || null;
+  if (!dict) throw new Error("上游数据格式异常");
+  const arr = fromDict(dict);
+  writeCache(arr);
+  return { items: arr, stale: false };
+}
+
+async function fetchItems() {
+  const cached = readCache();
+  const fresh = (cached && Date.now() - cached.ts < STALE_TTL_MS) ? cached.items : null;
+  try {
+    const freshData = await fetchLatest();
+    items = freshData.items;
+    return { n: items.length, stale: false };
+  } catch (e) {
+    if (fresh) { items = fresh; return { n: items.length, stale: true, err: e.message }; }
+    throw e;
+  }
 }
 
 /* ---- 渲染：自选 ---- */
@@ -245,17 +314,30 @@ function addToWatch() {
 /* ---- 刷新流程 ---- */
 async function load() {
   const btn = $("btnRefresh");
+  // 已有本地缓存且当前无数据 → 先秒出缓存，再后台拉新
+  const cached = readCache();
+  const freshCache = (cached && Date.now() - cached.ts < STALE_TTL_MS) ? cached.items : null;
+  if (freshCache && items.length === 0) {
+    items = freshCache;
+    markChanges();
+    renderWatch(); renderHot(); renderArb();
+    $("gameVersion").textContent = freshCache.length + " 件物品（缓存）";
+    $("lastUpdate").textContent = now();
+  }
   btn.disabled = true;
   btn.textContent = "同步中";
   try {
-    const n = await fetchItems();
+    const r = await fetchItems();
     markChanges();
-    $("gameVersion").textContent = n + " 件物品";
+    $("gameVersion").textContent = r.n + " 件物品" + (r.stale ? "（离线降级）" : "");
     $("lastUpdate").textContent = now();
+    if (r.stale) console.warn("拉取失败，使用本地缓存:", r.err);
     renderWatch(); renderHot(); renderArb();
   } catch (e) {
-    $("gameVersion").textContent = "加载失败: " + e.message;
-    console.error(e);
+    if (!freshCache) {
+      $("gameVersion").textContent = "加载失败: " + e.message;
+      console.error(e);
+    }
   }
   btn.disabled = false;
   btn.textContent = "刷新";
