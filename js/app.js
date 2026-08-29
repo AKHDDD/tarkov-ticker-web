@@ -29,9 +29,15 @@ function sortList(list, cols, st) {
   if (!st.key) return list.slice();
   const get = cols[st.key].get;
   return list.slice().sort((a, b) => {
-    let va = normNum(get(a)), vb = normNum(get(b));
-    if (st.abs) { va = Math.abs(va); vb = Math.abs(vb); }
-    return st.dir === "desc" ? vb - va : va - vb;
+    const va = get(a), vb = get(b);
+    // 字符串列（如物品类型）按文本排序
+    if (typeof va === "string" || typeof vb === "string") {
+      const sa = String(va == null ? "" : va), sb = String(vb == null ? "" : vb);
+      return st.dir === "desc" ? sb.localeCompare(sa, "zh") : sa.localeCompare(sb, "zh");
+    }
+    let na = normNum(va), nb = normNum(vb);
+    if (st.abs) { na = Math.abs(na); nb = Math.abs(nb); }
+    return st.dir === "desc" ? nb - na : na - nb;
   });
 }
 function paintSort(panelSel, st) {
@@ -60,6 +66,7 @@ function bindSort(panelSel, cols, st, rerender) {
 /* 热榜：默认按 48h 涨跌绝对波动降序 */
 let hotSort = { key: "chg", dir: "desc", abs: true };
 const HOT_COLS = {
+  type:   { get: i => typeCn((i.types && i.types[0]) || "") },
   avg:    { get: i => i.avg24hPrice },
   low:    { get: i => i.low24hPrice },
   high:   { get: i => i.high24hPrice },
@@ -71,6 +78,7 @@ const HOT_COLS = {
 /* 自选：默认保持加入顺序，点击表头后排序 */
 let watchSort = { key: null, dir: "desc", abs: false };
 const WATCH_COLS = {
+  type:   { get: i => typeCn((i.types && i.types[0]) || "") },
   avg:    { get: i => i.avg24hPrice },
   low:    { get: i => i.low24hPrice },
   high:   { get: i => i.high24hPrice },
@@ -82,6 +90,7 @@ const WATCH_COLS = {
 /* 套利：默认按单件利润降序 */
 let arbSort = { key: "profit", dir: "desc", abs: false };
 const ARB_COLS = {
+  type:   { get: i => typeCn((i.types && i.types[0]) || "") },
   price:  { get: i => i.lastLowPrice },
   trader: { get: i => i.bestTrader },
   profit: { get: i => i.profit, absFirst: true },
@@ -279,11 +288,12 @@ function renderArb() {
   const body = $("arbBody");
   const list = sortList(items.filter(i => i.profit > 0), ARB_COLS, arbSort).slice(0, TOP_N);
   if (list.length === 0) {
-    body.innerHTML = '<tr><td colspan="5" class="empty">当前无正利润套利项</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="empty">当前无正利润套利项</td></tr>';
     return;
   }
   body.innerHTML = list.map(i => `<tr>
     <td>${icon(i)}${esc(i.shortName)}</td>
+    <td>${esc(typeCn(i.types[0]))}</td>
     <td>${fmt(i.lastLowPrice)}</td>
     <td>${fmt(i.bestTrader)}</td>
     <td class="profit-pos">+${fmt(i.profit)}</td>

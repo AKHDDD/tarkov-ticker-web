@@ -47,7 +47,7 @@
     </div>
     <table class="grid">
       <thead>
-        <tr><th>物品</th><th>类型</th><th data-sort="avg" class="sortable">均价 24h</th><th data-sort="low" class="sortable">低点 24h</th><th data-sort="high" class="sortable">高点 24h</th><th data-sort="price" class="sortable">当前最低</th><th data-sort="chg" class="sortable">涨跌 48h</th><th data-sort="offers" class="sortable">在售</th><th></th></tr>
+        <tr><th>物品</th><th data-sort="type" class="sortable">类型</th><th data-sort="avg" class="sortable">均价 24h</th><th data-sort="low" class="sortable">低点 24h</th><th data-sort="high" class="sortable">高点 24h</th><th data-sort="price" class="sortable">当前最低</th><th data-sort="chg" class="sortable">涨跌 48h</th><th data-sort="offers" class="sortable">在售</th><th></th></tr>
       </thead>
       <tbody id="watchBody"></tbody>
     </table>
@@ -58,7 +58,7 @@
     <table class="grid">
       <thead>
         <tr>
-          <th>物品</th><th>类型</th>
+          <th>物品</th><th data-sort="type" class="sortable">类型</th>
           <th data-sort="avg" class="sortable">均价 24h</th>
           <th data-sort="low" class="sortable">低点 24h</th>
           <th data-sort="high" class="sortable">高点 24h</th>
@@ -75,7 +75,7 @@
     <p class="legend">按「商人最高收购价 − 跳蚤最低价」计算单件利润，仅展示正利润项，已排除黑商 Fence。仅供参考，实际成交受手续费影响。</p>
     <table class="grid">
       <thead>
-        <tr><th>物品</th><th data-sort="price" class="sortable">跳蚤最低</th><th data-sort="trader" class="sortable">商人最高</th><th data-sort="profit" class="sortable">单件利润</th><th data-sort="offers" class="sortable">在售</th></tr>
+        <tr><th>物品</th><th data-sort="type" class="sortable">类型</th><th data-sort="price" class="sortable">跳蚤最低</th><th data-sort="trader" class="sortable">商人最高</th><th data-sort="profit" class="sortable">单件利润</th><th data-sort="offers" class="sortable">在售</th></tr>
       </thead>
       <tbody id="arbBody"></tbody>
     </table>
@@ -90,6 +90,6 @@
   <p><a href="privacy-policy.html">隐私政策</a></p>
 </footer>
 
-<script src="js/app.js?v=4"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>

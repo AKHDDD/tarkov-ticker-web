@@ -208,7 +208,8 @@ footer a { color: var(--sand); }
 @media (max-width: 640px) {
   /* 隐藏「类型」列 */
   #panel-watch .grid th:nth-child(2), #panel-watch .grid td:nth-child(2),
-  #panel-hot .grid th:nth-child(2), #panel-hot .grid td:nth-child(2) { display: none; }
+  #panel-hot .grid th:nth-child(2), #panel-hot .grid td:nth-child(2),
+  #panel-arb .grid th:nth-child(2), #panel-arb .grid td:nth-child(2) { display: none; }
   /* 隐藏「低点 24h」列（套利表列数不同，仅自选/热榜） */
   #panel-watch .grid th:nth-child(4), #panel-watch .grid td:nth-child(4),
   #panel-hot .grid th:nth-child(4), #panel-hot .grid td:nth-child(4) { display: none; }
