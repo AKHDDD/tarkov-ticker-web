@@ -12,7 +12,7 @@
 const API = "https://json.tarkov.dev/regular/items";  // 直连 REST，时间戳参数破 CDN 缓存
 const REFRESH_MS = 5 * 60 * 1000;   // 全量约 16MB，每 5 分钟自动刷新
 const STALE_TTL_MS = 30 * 60 * 1000; // 本地缓存最长容忍 30 分钟（拉取失败时降级用）
-const CACHE_KEY = "tw_items_cache_v2"; // 裁剪后行情缓存（v2：REST 名字脱敏，需强制刷新旧占位数据）
+const CACHE_KEY = "tw_items_cache_v3"; // 裁剪后行情缓存（v3：新增游戏内 Handbook 分类，需刷新旧缓存）
 const TOP_N = 30;                   // 热榜/套利展示条数
 const LS_KEY = "tw_watchlist_v2";   // 自选清单存储 key（v2：旧 v1 存的是占位符乱码名，弃用）
 const FENCE_ID = "579dc571d53a0658a154fbec"; // 黑商 Fence 的 tarkov.dev trader id（套利排除）
@@ -66,7 +66,7 @@ function bindSort(panelSel, cols, st, rerender) {
 /* 热榜：默认按 48h 涨跌绝对波动降序 */
 let hotSort = { key: "chg", dir: "desc", abs: true };
 const HOT_COLS = {
-  type:   { get: i => typeCn((i.types && i.types[0]) || "") },
+  type:   { get: i => gameCat(i) },
   avg:    { get: i => i.avg24hPrice },
   low:    { get: i => i.low24hPrice },
   high:   { get: i => i.high24hPrice },
@@ -78,7 +78,7 @@ const HOT_COLS = {
 /* 自选：默认保持加入顺序，点击表头后排序 */
 let watchSort = { key: null, dir: "desc", abs: false };
 const WATCH_COLS = {
-  type:   { get: i => typeCn((i.types && i.types[0]) || "") },
+  type:   { get: i => gameCat(i) },
   avg:    { get: i => i.avg24hPrice },
   low:    { get: i => i.low24hPrice },
   high:   { get: i => i.high24hPrice },
@@ -90,7 +90,7 @@ const WATCH_COLS = {
 /* 套利：默认按单件利润降序 */
 let arbSort = { key: "profit", dir: "desc", abs: false };
 const ARB_COLS = {
-  type:   { get: i => typeCn((i.types && i.types[0]) || "") },
+  type:   { get: i => gameCat(i) },
   price:  { get: i => i.lastLowPrice },
   trader: { get: i => i.bestTrader },
   profit: { get: i => i.profit, absFirst: true },
@@ -129,15 +129,47 @@ const typeCn = t => ({
   specialSlot: "特殊槽", wearable: "穿戴品"
 }[t] || t);
 
-/* ---- 类型筛选：从数据中收集类型下拉，选中后三表按类型过滤 ---- */
-let typeFilter = "";  // 当前选中的类型（中文名），空 = 全部
-// 常见类型优先排序，其余按拼音
-const TYPE_ORDER = ["武器", "弹药", "护甲", "装备", "钥匙", "医疗", "食物", "饮品",
-  "药剂", "背包", "胸挂", "改装件", "杂物", "任务", "补给", "特殊", "信息", "家具"];
+/* ---- 游戏内 Handbook 顶级分类（物品按游戏内分类归属） ----
+   tarkov.dev 每条物品带 handbookCategories 数组，其末位即游戏内
+   Handbook 顶级大类 ID（对应游戏内物品栏的 10 大类，见游戏内截图），
+   用该 ID 映射中文名即可实现"游戏内分类"筛选。 */
+const HANDBOOK_TOP_CN = {
+  "5b5f71a686f77447ed5636ab": "武器零件&配件", // Weapon parts & mods
+  "5b47574386f77428ca22b33f": "装备",          // Gear
+  "5b5f78dc86f77409407a7f8e": "武器",          // Weapons
+  "5b47574386f77428ca22b346": "弹药",          // Ammo
+  "5b47574386f77428ca22b33e": "交换用物品",    // Barter items
+  "5b47574386f77428ca22b342": "钥匙",          // Keys
+  "5b47574386f77428ca22b341": "情报物品",      // Info items
+  "5b47574386f77428ca22b340": "饮食",          // Provisions
+  "5b47574386f77428ca22b344": "医疗物品",      // Medication
+  "5b47574386f77428ca22b345": "特殊装备",      // Special equipment
+  "5b619f1a86f77450a702a6f3": "任务物品",      // Task items
+  "6a35427afc3f27b15905a876": "通行证文档",    // Battle Pass documents
+  "5b47574386f77428ca22b343": "地图",          // Maps
+  "5b5f78b786f77447ed5636af": "货币",          // Money
+  "5b5f750686f774093e6cb503": "装备改装件",    // Gear mods
+  "5b5f736886f774094242f193": "照明与激光",    // Light & laser devices
+};
+// 物品 → 游戏内大类中文名（handbook 末位；无 handbook 时回退 typeCn 兜底）
+function gameCat(i) {
+  const hb = i.handbookCategories || [];
+  const topId = hb.length ? hb[hb.length - 1] : "";
+  const cn = HANDBOOK_TOP_CN[topId];
+  if (cn) return cn;
+  return typeCn((i.types && i.types[0]) || "") || "其他";
+}
+
+/* ---- 游戏内分类筛选：从数据中收集大类下拉，选中后三表按分类过滤 ---- */
+let typeFilter = "";  // 当前选中的游戏内大类（中文名），空 = 全部
+// 按游戏内 Handbook 顺序优先排序，其余按拼音
+const TYPE_ORDER = ["交换用物品", "装备", "武器零件&配件", "武器", "弹药",
+  "饮食", "医疗物品", "钥匙", "情报物品", "特殊装备", "任务物品",
+  "通行证文档", "地图", "货币", "装备改装件", "照明与激光", "其他"];
 function collectTypes() {
   const set = new Set();
   items.forEach(i => {
-    const t = typeCn((i.types && i.types[0]) || "");
+    const t = gameCat(i);
     if (t) set.add(t);
   });
   const opts = [...set].sort((a, b) => {
@@ -157,7 +189,7 @@ function collectTypes() {
 }
 function matchType(i) {
   if (!typeFilter) return true;
-  return typeCn((i.types && i.types[0]) || "") === typeFilter;
+  return gameCat(i) === typeFilter;
 }
 const now = () => new Date().toLocaleTimeString("zh-CN", { hour12: false });
 
@@ -222,6 +254,7 @@ function toItem(it) {
     changeLast48hPercent: it.changeLast48hPercent ?? 0,
     lastOfferCount: it.lastOfferCount ?? 0,
     types: it.types || [],
+    handbookCategories: it.handbookCategories || [],
     bestTrader: best,
     traderName: "",
     profit: price > 0 ? best - price : 0,
@@ -287,7 +320,7 @@ function renderWatch() {
     const st = alertState(i);
     return `<tr class="${alertCls(st)}">
       <td>${icon(i)}${esc(i.shortName)} ${alertBadge(st)}</td>
-      <td>${esc(typeCn(i.types[0]))}</td>
+      <td>${esc(gameCat(i))}</td>
       <td>${fmt(i.avg24hPrice)}</td>
       <td>${fmt(i.low24hPrice)}</td>
       <td>${fmt(i.high24hPrice)}</td>
@@ -328,7 +361,7 @@ function renderHot() {
     const inWatch = watch.includes(i.shortName);
     return `<tr>
       <td>${icon(i)}${esc(i.shortName)} <button class="addsel" data-add="${esc(i.shortName)}" ${inWatch ? "disabled" : ""}>${inWatch ? "✓" : "＋"}</button></td>
-      <td>${esc(typeCn(i.types[0]))}</td>
+      <td>${esc(gameCat(i))}</td>
       <td>${fmt(i.avg24hPrice)}</td>
       <td>${fmt(i.low24hPrice)}</td>
       <td>${fmt(i.high24hPrice)}</td>
@@ -350,7 +383,7 @@ function renderArb() {
   }
   body.innerHTML = list.map(i => `<tr>
     <td>${icon(i)}${esc(i.shortName)}</td>
-    <td>${esc(typeCn(i.types[0]))}</td>
+    <td>${esc(gameCat(i))}</td>
     <td>${fmt(i.lastLowPrice)}</td>
     <td>${fmt(i.bestTrader)}</td>
     <td class="profit-pos">+${fmt(i.profit)}</td>
