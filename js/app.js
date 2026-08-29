@@ -1,16 +1,17 @@
 /* ============================================================
    塔科夫跳蚤行情 - 前端逻辑
-   数据源: tarkov.dev 社区公开 GraphQL API（免费，无 key）
-   注意: 有 rate limit，默认 5 分钟刷新一次，勿调太低
+   数据源: tarkov.dev 社区公开 REST API（免费，无 key，CORS 全开）
+   主数据 + 英文翻译表并行拉取，浏览器本地合并本地化
+   注: GraphQL 端点当前故障（返回 unavailable），已切换 REST；
+       请求 cache: no-cache 每次重新验证，服务端更新即拿新数据
    ============================================================ */
 
-const API = "https://api.tarkov.dev/";
+const API = "https://json.tarkov.dev/regular/items";          // REST 主数据（gzip/br 压缩后约 1.3MB）
+const TRANS_API = "https://json.tarkov.dev/regular/items_en"; // 英文翻译表（本地化物品名）
+const FENCE_ID = "579dc571d53a0658a154fbec";                  // 黑商 Fence 的 trader ID（套利时排除）
 const REFRESH_MS = 5 * 60 * 1000;   // 默认 5 分钟自动刷新
-const MAX_ITEMS = 300;              // 单次拉取物品上限
 const TOP_N = 30;                   // 热榜/套利展示条数
 const LS_KEY = "tw_watchlist";      // 自选清单存储 key
-
-const QUERY = `{"query":"{ items(lang: \\"en\\", limit: ${MAX_ITEMS}) { id shortName types avg24hPrice lastLowPrice low24hPrice high24hPrice changeLast48hPercent lastOfferCount sellFor { priceRUB vendor { name } } } }"}`;
 
 let items = [];
 let watch = [];
@@ -34,23 +35,31 @@ const now = () => new Date().toLocaleTimeString("zh-CN", { hour12: false });
 
 /* ---- 数据拉取 ---- */
 async function fetchItems() {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: QUERY
-  });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const data = await res.json();
-  const arr = (data.data && data.data.items) || [];
-  items = arr.map(it => {
+  // REST：主数据 + 翻译表并行拉取（服务端 CORS 已全开，浏览器自动解压 gzip/br）
+  const [mainRes, transRes] = await Promise.all([
+    fetch(API, { cache: "no-cache" }),
+    fetch(TRANS_API, { cache: "no-cache" })
+  ]);
+  if (!mainRes.ok) throw new Error("HTTP " + mainRes.status);
+  const main = await mainRes.json();
+  const trans = transRes.ok ? await transRes.json() : { data: {} };
+  const dict = (main.data && main.data.items) || {};
+  const t = trans.data || {};
+  // REST 返回的 name/shortName 是占位符（"<id> Name"），用翻译表映射真实英文名
+  items = Object.values(dict).map(it => {
+    const name = t[it.name] || it.name;
+    const shortName = t[it.shortName] || it.shortName;
+    // 套利：商人最高收购价 − 跳蚤最低价（排除黑商 Fence）
     let bestTrader = 0;
-    (it.sellFor || []).forEach(s => {
-      if (s.vendor && s.vendor.name === "Fence") return; // 排除黑商
+    (it.sellToTrader || []).forEach(s => {
+      if (s.trader === FENCE_ID) return;
       if ((s.priceRUB || 0) > bestTrader) bestTrader = s.priceRUB;
     });
     const lastLow = it.lastLowPrice || 0;
     return {
       ...it,
+      name,
+      shortName,
       types: it.types || [],
       bestTrader,
       profit: lastLow > 0 ? bestTrader - lastLow : 0
