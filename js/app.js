@@ -1,21 +1,86 @@
 /* ============================================================
    塔科夫跳蚤行情 - 前端逻辑
-   数据源: tarkov.dev 社区公开 REST API（免费，无 key，CORS 全开）
-   主数据 + 英文翻译表并行拉取，浏览器本地合并本地化
-   注: GraphQL 端点当前故障（返回 unavailable），已切换 REST；
-       请求 cache: no-cache 每次重新验证，服务端更新即拿新数据
+   数据源: 自建 Cloudflare Worker（合并 Tarkov-Market 实时价 + tarkov.dev 高低点）
+   Worker 已做字段精简、名称本地化、套利计算，前端只管渲染
+   注: 旧版直连 json.tarkov.dev REST 被 CDN 锁死（max-age 8天），
+       轮询再快也拿不到新数据，已切换到 Worker 方案
    ============================================================ */
 
-const API = "https://json.tarkov.dev/regular/items";          // REST 主数据（gzip/br 压缩后约 1.3MB）
-const TRANS_API = "https://json.tarkov.dev/regular/items_en"; // 英文翻译表（本地化物品名）
-const FENCE_ID = "579dc571d53a0658a154fbec";                  // 黑商 Fence 的 trader ID（套利时排除）
-const REFRESH_MS = 2 * 60 * 1000;   // 每 2 分钟自动刷新（数据源为快照级，过频无意义）
+const API = "https://YOUR_WORKER.workers.dev/";  // TODO: 部署 Worker 后替换为实际地址（见 README-WORKER.md）
+const REFRESH_MS = 30 * 1000;   // 每 30 秒自动刷新（Worker 边缘缓存决定新鲜度下限）
 const TOP_N = 30;                   // 热榜/套利展示条数
 const LS_KEY = "tw_watchlist";      // 自选清单存储 key
 
 let items = [];
 let watch = [];
 try { watch = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch (e) { watch = []; }
+
+/* ---- 通用表头排序 ----
+   cols: { key: { get: item => 数值, absFirst?: 该列首次点击先按绝对值（如涨跌） } }
+   每个表格独立的 sort state：{ key, dir, abs } */
+const normNum = n => (n == null || isNaN(n)) ? 0 : Number(n);
+function sortList(list, cols, st) {
+  if (!st.key) return list.slice();
+  const get = cols[st.key].get;
+  return list.slice().sort((a, b) => {
+    let va = normNum(get(a)), vb = normNum(get(b));
+    if (st.abs) { va = Math.abs(va); vb = Math.abs(vb); }
+    return st.dir === "desc" ? vb - va : va - vb;
+  });
+}
+function paintSort(panelSel, st) {
+  document.querySelectorAll(panelSel + " th[data-sort]").forEach(th => {
+    th.classList.remove("s-active", "s-asc", "s-desc");
+    if (st.key && th.dataset.sort === st.key)
+      th.classList.add("s-active", st.dir === "desc" ? "s-desc" : "s-asc");
+  });
+}
+function bindSort(panelSel, cols, st, rerender) {
+  document.querySelectorAll(panelSel + " th[data-sort]").forEach(th => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.sort;
+      const absFirst = !!(cols[key] && cols[key].absFirst);
+      if (st.key === key) {
+        if (absFirst && st.abs) { st.abs = false; st.dir = "desc"; } // 绝对值 -> 真实值
+        else { st.dir = st.dir === "desc" ? "asc" : "desc"; st.abs = false; }
+      } else {
+        st.key = key; st.dir = "desc"; st.abs = absFirst;
+      }
+      rerender();
+    });
+  });
+}
+
+/* 热榜：默认按 48h 涨跌绝对波动降序 */
+let hotSort = { key: "chg", dir: "desc", abs: true };
+const HOT_COLS = {
+  avg:    { get: i => i.avg24hPrice },
+  low:    { get: i => i.low24hPrice },
+  high:   { get: i => i.high24hPrice },
+  price:  { get: i => i.lastLowPrice },
+  chg:    { get: i => i.changeLast48hPercent, absFirst: true },
+  offers: { get: i => i.lastOfferCount }
+};
+
+/* 自选：默认保持加入顺序，点击表头后排序 */
+let watchSort = { key: null, dir: "desc", abs: false };
+const WATCH_COLS = {
+  avg:    { get: i => i.avg24hPrice },
+  low:    { get: i => i.low24hPrice },
+  high:   { get: i => i.high24hPrice },
+  price:  { get: i => i.lastLowPrice },
+  chg:    { get: i => i.changeLast48hPercent, absFirst: true },
+  offers: { get: i => i.lastOfferCount }
+};
+
+/* 套利：默认按单件利润降序 */
+let arbSort = { key: "profit", dir: "desc", abs: false };
+const ARB_COLS = {
+  price:  { get: i => i.lastLowPrice },
+  trader: { get: i => i.bestTrader },
+  profit: { get: i => i.profit, absFirst: true },
+  offers: { get: i => i.lastOfferCount }
+};
 
 /* ---- 价格变动标记（刷新时对比上一次，实现"跳动"反馈） ---- */
 let prevPrice = {};   // shortName -> 上一次的当前最低价 lastLowPrice
@@ -64,43 +129,19 @@ const alertCls = st => st === "high" ? "alert-high" : st === "near" ? "alert-nea
 
 /* ---- 数据拉取 ---- */
 async function fetchItems() {
-  // REST：主数据 + 翻译表并行拉取（服务端 CORS 已全开，浏览器自动解压 gzip/br）
-  const [mainRes, transRes] = await Promise.all([
-    fetch(API, { cache: "no-cache" }),
-    fetch(TRANS_API, { cache: "no-cache" })
-  ]);
-  if (!mainRes.ok) throw new Error("HTTP " + mainRes.status);
-  const main = await mainRes.json();
-  const trans = transRes.ok ? await transRes.json() : { data: {} };
-  const dict = (main.data && main.data.items) || {};
-  const t = trans.data || {};
-  // REST 返回的 name/shortName 是占位符（"<id> Name"），用翻译表映射真实英文名
-  items = Object.values(dict).map(it => {
-    const name = t[it.name] || it.name;
-    const shortName = t[it.shortName] || it.shortName;
-    // 套利：商人最高收购价 − 跳蚤最低价（排除黑商 Fence）
-    let bestTrader = 0;
-    (it.sellToTrader || []).forEach(s => {
-      if (s.trader === FENCE_ID) return;
-      if ((s.priceRUB || 0) > bestTrader) bestTrader = s.priceRUB;
-    });
-    const lastLow = it.lastLowPrice || 0;
-    return {
-      ...it,
-      name,
-      shortName,
-      types: it.types || [],
-      bestTrader,
-      profit: lastLow > 0 ? bestTrader - lastLow : 0
-    };
-  });
+  // Worker 统一返回精简行情数组（已合并实时价 + 高低点 + 套利，字段结构与旧版一致）
+  const res = await fetch(API, { cache: "no-cache" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const j = await res.json();
+  const arr = Array.isArray(j) ? j : (j.items || []);
+  items = arr;
   return items.length;
 }
 
 /* ---- 渲染：自选 ---- */
 function renderWatch() {
   const body = $("watchBody");
-  const list = items.filter(i => watch.includes(i.shortName) || watch.includes(i.id));
+  const list = sortList(items.filter(i => watch.includes(i.shortName) || watch.includes(i.id)), WATCH_COLS, watchSort);
   if (list.length === 0) {
     body.innerHTML = '<tr><td colspan="9" class="empty">自选为空 — 搜索物品名加入</td></tr>';
     updateAlert();
@@ -121,6 +162,7 @@ function renderWatch() {
       <td><button class="del" data-rm="${esc(i.shortName)}">✕</button></td>
     </tr>`;
   }).join("");
+  paintSort("#panel-watch", watchSort);
   updateAlert();
 }
 
@@ -135,21 +177,22 @@ function updateAlert() {
   el.style.display = "inline-block";
 }
 
-/* ---- 渲染：热榜（按 48h 绝对波动排序） ---- */
+/* ---- 渲染：热榜（表头可排序，默认按 48h 绝对波动） ---- */
 function renderHot() {
   const body = $("hotBody");
-  const list = items
-    .filter(i => (i.lastLowPrice || 0) > 0 && i.changeLast48hPercent != null)
-    .sort((a, b) => Math.abs(b.changeLast48hPercent) - Math.abs(a.changeLast48hPercent))
-    .slice(0, TOP_N);
+  let list = items.filter(i => (i.lastLowPrice || 0) > 0);
+  // "涨跌 48h"列保留无涨跌数据不进入列表（维持原热榜口径）
+  if (hotSort.key === "chg") list = list.filter(i => i.changeLast48hPercent != null);
+  list = sortList(list, HOT_COLS, hotSort).slice(0, TOP_N);
   if (list.length === 0) {
     body.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
     return;
   }
   body.innerHTML = list.map(i => {
     const c = i.changeLast48hPercent;
+    const inWatch = watch.includes(i.shortName);
     return `<tr>
-      <td>${icon(i)}${esc(i.shortName)}</td>
+      <td>${icon(i)}${esc(i.shortName)} <button class="addsel" data-add="${esc(i.shortName)}" ${inWatch ? "disabled" : ""}>${inWatch ? "✓" : "＋"}</button></td>
       <td>${esc(typeCn(i.types[0]))}</td>
       <td>${fmt(i.avg24hPrice)}</td>
       <td>${fmt(i.low24hPrice)}</td>
@@ -159,15 +202,13 @@ function renderHot() {
       <td>${fmt(i.lastOfferCount)}</td>
     </tr>`;
   }).join("");
+  paintSort("#panel-hot", hotSort);
 }
 
 /* ---- 渲染：套利（商人价 − 跳蚤最低价） ---- */
 function renderArb() {
   const body = $("arbBody");
-  const list = items
-    .filter(i => i.profit > 0)
-    .sort((a, b) => b.profit - a.profit)
-    .slice(0, TOP_N);
+  const list = sortList(items.filter(i => i.profit > 0), ARB_COLS, arbSort).slice(0, TOP_N);
   if (list.length === 0) {
     body.innerHTML = '<tr><td colspan="5" class="empty">当前无正利润套利项</td></tr>';
     return;
@@ -179,6 +220,7 @@ function renderArb() {
     <td class="profit-pos">+${fmt(i.profit)}</td>
     <td>${fmt(i.lastOfferCount)}</td>
   </tr>`).join("");
+  paintSort("#panel-arb", arbSort);
 }
 
 /* ---- 搜索 + 加入自选 ---- */
@@ -241,7 +283,23 @@ document.addEventListener("click", e => {
     renderWatch();
   }
 });
+/* 热榜等列表一键加入自选 */
+document.addEventListener("click", e => {
+  if (e.target.classList && e.target.classList.contains("addsel")) {
+    const key = e.target.dataset.add;
+    if (!watch.includes(key)) {
+      watch.push(key);
+      localStorage.setItem(LS_KEY, JSON.stringify(watch));
+      renderWatch();
+      renderHot();
+      updateAlert();
+    }
+  }
+});
 
 /* ---- 启动 ---- */
+bindSort("#panel-watch", WATCH_COLS, watchSort, renderWatch);
+bindSort("#panel-hot", HOT_COLS, hotSort, renderHot);
+bindSort("#panel-arb", ARB_COLS, arbSort, renderArb);
 load();
 setInterval(load, REFRESH_MS);
