@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>塔科夫跳蚤行情 · Tarkov Market Ticker</title>
-<meta name="description" content="逃离塔科夫跳蚤市场价格监控：实时均价 / 24h最低 / 48h涨跌 / 商人套利利润查询">
+<meta name="description" content="逃离塔科夫跳蚤市场价格监控：实时均价 / 24h低点高点 / 48h涨跌 / 商人套利利润 / 自选高点预警查询">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -20,6 +20,7 @@
   <div class="status">
     <span class="update-time" id="lastUpdate">--:--:--</span>
     <span class="spacer"></span>
+    <span class="alert-badge" id="alertBadge" style="display:none"></span>
     <span id="gameVersion">连接中...</span>
     <button id="btnRefresh" class="btn">刷新</button>
   </div>
@@ -43,7 +44,7 @@
     </div>
     <table class="grid">
       <thead>
-        <tr><th>物品</th><th>类型</th><th>均价 24h</th><th>最低 24h</th><th>涨跌 48h</th><th>在售</th><th></th></tr>
+        <tr><th>物品</th><th>类型</th><th>均价 24h</th><th>低点 24h</th><th>高点 24h</th><th>当前最低</th><th>涨跌 48h</th><th>在售</th><th></th></tr>
       </thead>
       <tbody id="watchBody"></tbody>
     </table>
@@ -53,7 +54,7 @@
     <p class="legend">按 48h 涨跌幅度排序（绝对波动），热度最高的前 30 件。</p>
     <table class="grid">
       <thead>
-        <tr><th>物品</th><th>类型</th><th>均价 24h</th><th>最低 24h</th><th>涨跌 48h</th><th>在售</th></tr>
+        <tr><th>物品</th><th>类型</th><th>均价 24h</th><th>低点 24h</th><th>高点 24h</th><th>当前最低</th><th>涨跌 48h</th><th>在售</th></tr>
       </thead>
       <tbody id="hotBody"></tbody>
     </table>

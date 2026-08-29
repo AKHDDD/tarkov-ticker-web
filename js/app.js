@@ -33,6 +33,22 @@ const typeCn = t => ({
 }[t] || t);
 const now = () => new Date().toLocaleTimeString("zh-CN", { hour12: false });
 
+/* ---- 物品图标 / 高点预警 ---- */
+const icon = i => i.iconLink
+  ? `<img class="ico" src="${esc(i.iconLink)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+  : '<span class="ico ico-empty"></span>';
+// 高点预警：当前最低挂牌价 lastLowPrice 达到/接近 24h 高点 high24hPrice
+const alertState = i => {
+  const low = i.lastLowPrice || 0, high = i.high24hPrice || 0;
+  if (low <= 0 || high <= 0) return null;
+  if (low >= high) return "high";        // 已达 24h 高点
+  if (low >= high * 0.9) return "near";  // 接近 24h 高点（90% 阈值）
+  return null;
+};
+const alertBadge = st => st === "high" ? '<span class="badge b-high">▲高点</span>'
+  : st === "near" ? '<span class="badge b-near">▲近高</span>' : "";
+const alertCls = st => st === "high" ? "alert-high" : st === "near" ? "alert-near" : "";
+
 /* ---- 数据拉取 ---- */
 async function fetchItems() {
   // REST：主数据 + 翻译表并行拉取（服务端 CORS 已全开，浏览器自动解压 gzip/br）
@@ -73,21 +89,37 @@ function renderWatch() {
   const body = $("watchBody");
   const list = items.filter(i => watch.includes(i.shortName) || watch.includes(i.id));
   if (list.length === 0) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">自选为空 — 搜索物品名加入</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="empty">自选为空 — 搜索物品名加入</td></tr>';
+    updateAlert();
     return;
   }
   body.innerHTML = list.map(i => {
     const c = i.changeLast48hPercent;
-    return `<tr>
-      <td>${esc(i.shortName)}</td>
+    const st = alertState(i);
+    return `<tr class="${alertCls(st)}">
+      <td>${icon(i)}${esc(i.shortName)} ${alertBadge(st)}</td>
       <td>${esc(typeCn(i.types[0]))}</td>
       <td>${fmt(i.avg24hPrice)}</td>
+      <td>${fmt(i.low24hPrice)}</td>
+      <td>${fmt(i.high24hPrice)}</td>
       <td>${fmt(i.lastLowPrice)}</td>
       <td class="${cls(c)}">${pct(c)}</td>
       <td>${fmt(i.lastOfferCount)}</td>
       <td><button class="del" data-rm="${esc(i.shortName)}">✕</button></td>
     </tr>`;
   }).join("");
+  updateAlert();
+}
+
+/* 自选高点预警汇总（顶部状态条） */
+function updateAlert() {
+  const el = $("alertBadge");
+  const list = items.filter(i => watch.includes(i.shortName) || watch.includes(i.id));
+  const alerts = list.filter(i => alertState(i));
+  if (alerts.length === 0) { el.style.display = "none"; return; }
+  const high = alerts.filter(i => alertState(i) === "high").length;
+  el.textContent = `▲ 自选 ${alerts.length} 件接近/已达 24h 高点（其中 ${high} 件已到高点）`;
+  el.style.display = "inline-block";
 }
 
 /* ---- 渲染：热榜（按 48h 绝对波动排序） ---- */
@@ -98,15 +130,17 @@ function renderHot() {
     .sort((a, b) => Math.abs(b.changeLast48hPercent) - Math.abs(a.changeLast48hPercent))
     .slice(0, TOP_N);
   if (list.length === 0) {
-    body.innerHTML = '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
     return;
   }
   body.innerHTML = list.map(i => {
     const c = i.changeLast48hPercent;
     return `<tr>
-      <td>${esc(i.shortName)}</td>
+      <td>${icon(i)}${esc(i.shortName)}</td>
       <td>${esc(typeCn(i.types[0]))}</td>
       <td>${fmt(i.avg24hPrice)}</td>
+      <td>${fmt(i.low24hPrice)}</td>
+      <td>${fmt(i.high24hPrice)}</td>
       <td>${fmt(i.lastLowPrice)}</td>
       <td class="${cls(c)}">${pct(c)}</td>
       <td>${fmt(i.lastOfferCount)}</td>
@@ -126,7 +160,7 @@ function renderArb() {
     return;
   }
   body.innerHTML = list.map(i => `<tr>
-    <td>${esc(i.shortName)}</td>
+    <td>${icon(i)}${esc(i.shortName)}</td>
     <td>${fmt(i.lastLowPrice)}</td>
     <td>${fmt(i.bestTrader)}</td>
     <td class="profit-pos">+${fmt(i.profit)}</td>

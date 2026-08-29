@@ -139,11 +139,54 @@ body {
 
 .empty { color: var(--dim); text-align: center; padding: 24px 0; }
 
+/* ---- 物品图标 ---- */
+.ico {
+  width: 22px; height: 22px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 3px;
+  object-fit: contain;
+  background: #0f130b;
+  border: 1px solid #2a3220;
+}
+.ico-empty { display: inline-block; width: 22px; height: 22px; margin-right: 6px; vertical-align: middle; }
+
+/* ---- 高点预警 ---- */
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: bold;
+  border-radius: 3px;
+  vertical-align: 1px;
+}
+.b-high { background: #5a1f1f; color: #ff9c9c; border: 1px solid #a33; }
+.b-near { background: #5a4a12; color: #ffd97a; border: 1px solid #b8962f; }
+tr.alert-high td { background: #2b1512; }
+tr.alert-high:hover td { background: #371c17; }
+tr.alert-near td { background: #2a2310; }
+tr.alert-near:hover td { background: #372d14; }
+.alert-badge {
+  background: #5a1f1f;
+  color: #ff9c9c;
+  border: 1px solid #a33;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
 /* ---- 页脚 ---- */
 footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--dim); font-size: 12px; }
 footer a { color: var(--sand); }
 
 @media (max-width: 640px) {
-  .grid th:nth-child(2), .grid td:nth-child(2) { display: none; }
+  /* 隐藏「类型」列 */
+  #panel-watch .grid th:nth-child(2), #panel-watch .grid td:nth-child(2),
+  #panel-hot .grid th:nth-child(2), #panel-hot .grid td:nth-child(2) { display: none; }
+  /* 隐藏「低点 24h」列（套利表列数不同，仅自选/热榜） */
+  #panel-watch .grid th:nth-child(4), #panel-watch .grid td:nth-child(4),
+  #panel-hot .grid th:nth-child(4), #panel-hot .grid td:nth-child(4) { display: none; }
   .brand h1 { font-size: 16px; }
 }
