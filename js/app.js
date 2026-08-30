@@ -22,7 +22,7 @@ let gameMode = "regular";      // 当前服务器，切换后重新拉取对应�
 const apiUrl = () => `${API_BASE}/${gameMode}/items`; // 直连 REST，时间戳参数破 CDN 缓存
 const REFRESH_MS = 5 * 60 * 1000;   // 全量约 16MB，每 5 分钟自动刷新
 const STALE_TTL_MS = 30 * 60 * 1000; // 本地缓存最长容忍 30 分钟（拉取失败时降级用）
-const CACHE_KEY = () => "tw_items_cache_v4_" + gameMode; // 裁剪后行情缓存（v4：物品中文名 cnName；v3：游戏内 Handbook 分类；_<服>：三服各自独立缓存）
+const CACHE_KEY = () => "tw_items_cache_v5_" + gameMode; // 裁剪后行情缓存（v5：中文名改用游戏内简称短名+新增全名zhFull字段供搜索；v4：物品中文名 cnName；v3：游戏内 Handbook 分类；_<服>：三服各自独立缓存）
 const TOP_N = 30;                   // 热榜/套利展示条数
 const LS_KEY = "tw_watchlist_v2";   // 自选清单存储 key（v2：旧 v1 存的是占位符乱码名，弃用）
 const FENCE_ID = "579dc571d53a0658a154fbec"; // 黑商 Fence 的 tarkov.dev trader id（套利排除）
@@ -271,12 +271,14 @@ function toItem(it) {
   // 中文名：用物品模板 ID 查官方中文映射（js/zh_names.js，源自 SPT ch.json）；
   // 未收录物品（2025-2026 新增/禁售等）回退英文名显示。
   const zh = (typeof ZH_NAMES === "object" && ZH_NAMES[it.id]) || "";
+  const zhFull = (typeof ZH_FULL_NAMES === "object" && ZH_FULL_NAMES[it.id]) || "";
   const cnName = zh || shortName;
   return {
     id: it.id,
     shortName,
     name,
     cnName,
+    zhFull,
     iconLink: it.iconLink || "",
     avg24hPrice: Number(it.avg24hPrice) || 0,
     low24hPrice: Number(it.low24hPrice) || 0,
@@ -468,7 +470,7 @@ function renderSearch() {
   const kws = raw.split("/").map(s => s.trim()).filter(Boolean);
   if (kws.length === 0) { body.innerHTML = ""; return; }
   const list = items.filter(i => {
-    const hay = ((i.cnName ? i.cnName + " " : "") + i.shortName + " " + (i.name || "")).toLowerCase();
+    const hay = ((i.cnName ? i.cnName + " " : "") + (i.zhFull ? i.zhFull + " " : "") + i.shortName + " " + (i.name || "")).toLowerCase();
     return kws.every(k => hay.includes(k));
   });
   const sorted = sortList(list, SEARCH_COLS, searchSort);
