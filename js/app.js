@@ -298,6 +298,19 @@ function toItem(it) {
 function fromDict(dict) {
   return Object.keys(dict || {}).map(id => toItem(dict[id]));
 }
+// 数据源价格更新时刻：取当前 items 中 updated 的最大值（UTC→本地 HH:MM），
+// 用于让用户判断"当前价格"的新鲜度（tarkov.dev 价格存在滞后，非游戏实时价）。
+function dataUpdatedAt() {
+  let max = "";
+  for (const i of items) {
+    if (i.updated && i.updated > max) max = i.updated;
+  }
+  if (!max) return "";
+  const d = new Date(max);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return " · 价格更新 " + hh + ":" + mm;
+}
 // 本地缓存读写（裁剪后体积小，远低于 localStorage 5MB 上限；按服隔离）
 function readCache() {
   try {
@@ -449,6 +462,11 @@ function addToWatch() {
 
 /* ---- 全局搜索（搜索 Tab）：跨全量物品模糊匹配，/ 分隔多关键词叠加过滤 ---- */
 let searchSort = { key: null, dir: "desc", abs: false };
+let searchTypeFilter = "";  // 搜索 Tab 独立的游戏内分类过滤（与主 typeFilter 互不影响）
+// 地图名中文（用于从搜索全名中剔除）：防"灯塔"等地图名让钥匙/地图物品误命中关键词。
+// 用正则匹配，词边界只按中文完整词组剔除，避免误伤"灯"本身等普通词。
+const MAP_NAMES = ["灯塔", "工厂", "实验室", "海关", "森林", "海岸线", "储备站", "立交桥", "塔科夫街道", "军事基地", "导弹发射井", "下水道", "实验室"];
+const MAP_NAMES_RE = new RegExp(MAP_NAMES.join("|"), "g");
 const SEARCH_COLS = {
   type:   { get: i => gameCat(i) },
   avg:    { get: i => i.avg24hPrice },
@@ -458,6 +476,28 @@ const SEARCH_COLS = {
   chg:    { get: i => i.changeLast48hPercent, absFirst: true },
   offers: { get: i => i.lastOfferCount }
 };
+/* 搜索 Tab 的分类下拉：与主 typeFilter 用同一套分类口径，独立填充 */
+function collectSearchTypes() {
+  const set = new Set();
+  items.forEach(i => {
+    const t = gameCat(i);
+    if (t) set.add(t);
+  });
+  const opts = [...set].sort((a, b) => {
+    const ia = TYPE_ORDER.indexOf(a), ib = TYPE_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b, "zh");
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  const sel = $("searchTypeFilter");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">全部类型</option>' +
+    opts.map(t => `<option value="${esc(t)}">${t}</option>`).join("");
+  if (opts.includes(prev)) sel.value = prev; else sel.value = "";
+  searchTypeFilter = sel.value;
+}
 function renderSearch() {
   const body = $("searchBody");
   const hint = $("searchHint");
@@ -470,7 +510,11 @@ function renderSearch() {
   const kws = raw.split("/").map(s => s.trim()).filter(Boolean);
   if (kws.length === 0) { body.innerHTML = ""; return; }
   const list = items.filter(i => {
-    const hay = ((i.cnName ? i.cnName + " " : "") + (i.zhFull ? i.zhFull + " " : "") + i.shortName + " " + (i.name || "")).toLowerCase();
+    if (searchTypeFilter && gameCat(i) !== searchTypeFilter) return false;
+    // 剔除全名中的地图名（灯塔/工厂/实验室等）：避免搜"灯"时因"灯塔"误匹配到钥匙，
+    // 同时保留物品真实名称（cnName/简称/英文名）与全名其余部分参与匹配
+    const zhStripped = (i.zhFull || "").split(MAP_NAMES_RE).filter(Boolean).join(" ");
+    const hay = ((i.cnName ? i.cnName + " " : "") + zhStripped + " " + i.shortName + " " + (i.name || "")).toLowerCase();
     return kws.every(k => hay.includes(k));
   });
   const sorted = sortList(list, SEARCH_COLS, searchSort);
@@ -505,8 +549,8 @@ async function load() {
   if (freshCache && items.length === 0) {
     items = freshCache;
     markChanges();
-    renderWatch(); renderHot(); renderArb(); renderSearch(); collectTypes();
-    $("gameVersion").textContent = GAME_MODES[gameMode] + " · " + freshCache.length + " 件物品（缓存）";
+    renderWatch(); renderHot(); renderArb(); renderSearch(); collectTypes(); collectSearchTypes();
+    $("gameVersion").textContent = GAME_MODES[gameMode] + " · " + freshCache.length + " 件物品（缓存）" + dataUpdatedAt();
     $("lastUpdate").textContent = now();
   }
   btn.disabled = true;
@@ -514,10 +558,10 @@ async function load() {
   try {
     const r = await fetchItems();
     markChanges();
-    $("gameVersion").textContent = GAME_MODES[gameMode] + " · " + r.n + " 件物品" + (r.stale ? "（离线降级）" : "");
+    $("gameVersion").textContent = GAME_MODES[gameMode] + " · " + r.n + " 件物品" + (r.stale ? "（离线降级）" : "") + dataUpdatedAt();
     $("lastUpdate").textContent = now();
     if (r.stale) console.warn("拉取失败，使用本地缓存:", r.err);
-    renderWatch(); renderHot(); renderArb(); collectTypes();
+    renderWatch(); renderHot(); renderArb(); collectTypes(); collectSearchTypes();
   } catch (e) {
     if (!freshCache) {
       $("gameVersion").textContent = GAME_MODES[gameMode] + " 加载失败: " + e.message;
@@ -575,6 +619,12 @@ document.querySelectorAll(".mode-btn").forEach(btn => {
 $("typeFilter").addEventListener("change", e => {
   typeFilter = e.target.value;
   renderWatch(); renderHot(); renderArb();
+});
+/* 搜索 Tab 分类筛选：仅影响搜索结果 */
+const stf = $("searchTypeFilter");
+if (stf) stf.addEventListener("change", e => {
+  searchTypeFilter = e.target.value;
+  renderSearch();
 });
 document.addEventListener("click", e => {
   if (e.target.classList && e.target.classList.contains("del")) {

@@ -101,6 +101,13 @@
       <input id="searchAllInput" type="text" placeholder="搜索全部物品（中文/英文均可，支持 / 分隔多关键词），如：显卡 / gpu / 比特币 / m870...">
       <span class="hint" id="searchHint"></span>
     </div>
+    <div class="toolbar">
+      <label for="searchTypeFilter">结果分类</label>
+      <select id="searchTypeFilter">
+        <option value="">全部类型</option>
+      </select>
+      <span class="hint">搜索结果的游戏内分类过滤：搜「灯」时可选「照明与激光」等分类，排除地图名误匹配的钥匙类</span>
+    </div>
     <table class="grid">
       <thead>
         <tr><th>物品</th><th data-sort="type" class="sortable">类型</th><th data-sort="avg" class="sortable">均价 24h</th><th data-sort="low" class="sortable">低点 24h</th><th data-sort="high" class="sortable">高点 24h</th><th data-sort="price" class="sortable">当前最低</th><th data-sort="chg" class="sortable">涨跌 48h</th><th data-sort="offers" class="sortable">在售</th><th></th></tr>
@@ -119,6 +126,6 @@
 </footer>
 
 <script src="js/zh_names.js?v=3"></script>
-<script src="js/app.js?v=15"></script>
+<script src="js/app.js?v=17"></script>
 </body>
 </html>
