@@ -24,6 +24,7 @@ tarkov-ticker-web/
 ├── index.html            # 单页：状态栏 + 3 Tab + 广告位
 ├── css/style.css         # 军绿战术风格
 ├── js/app.js             # 数据拉取 / 渲染 / 自选 / 自动刷新(5min)
+├── js/zh_names.js        # 物品中文名映射表（游戏模板 ID -> 官方中文名，3680 件）
 ├── privacy-policy.html   # AdSense 必需
 └── robots.txt
 ```

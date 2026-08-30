@@ -162,6 +162,13 @@ body {
   border-bottom: 1px solid #262d1c;
   white-space: nowrap;
 }
+/* 物品名列（第一列）允许换行，容纳游戏内中文长名 */
+.grid td:first-child {
+  white-space: normal;
+  min-width: 160px;
+  max-width: 340px;
+  word-break: break-word;
+}
 .grid tr:hover td { background: #202619; }
 
 /* ---- 表头排序 ---- */

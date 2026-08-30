@@ -7,6 +7,9 @@
         ③ 首次同步后裁剪字段写入 localStorage，二次打开秒出数据，
            后台再静默拉新；拉取失败降级用本地缓存（stale-while-error）；
         ④ 套利用 REST 的 sellToTrader（商人收购价）计算，排除黑商 Fence。
+   物品中文名: tarkov.dev 上游仅有英文名，故用物品模板 ID 桥接
+       官方简体中文语言文件（js/zh_names.js，源自 SPT-AKI ch.json），
+       页面展示名 cnName 优先显示游戏内中文名，未收录物品回退英文。
    ============================================================ */
 
 const API_BASE = "https://json.tarkov.dev"; // REST 直连根地址，路径按服务器区分
@@ -19,7 +22,7 @@ let gameMode = "regular";      // 当前服务器，切换后重新拉取对应�
 const apiUrl = () => `${API_BASE}/${gameMode}/items`; // 直连 REST，时间戳参数破 CDN 缓存
 const REFRESH_MS = 5 * 60 * 1000;   // 全量约 16MB，每 5 分钟自动刷新
 const STALE_TTL_MS = 30 * 60 * 1000; // 本地缓存最长容忍 30 分钟（拉取失败时降级用）
-const CACHE_KEY = () => "tw_items_cache_v3_" + gameMode; // 裁剪后行情缓存（v3：游戏内 Handbook 分类；_<服>：三服各自独立缓存）
+const CACHE_KEY = () => "tw_items_cache_v4_" + gameMode; // 裁剪后行情缓存（v4：物品中文名 cnName；v3：游戏内 Handbook 分类；_<服>：三服各自独立缓存）
 const TOP_N = 30;                   // 热榜/套利展示条数
 const LS_KEY = "tw_watchlist_v2";   // 自选清单存储 key（v2：旧 v1 存的是占位符乱码名，弃用）
 const FENCE_ID = "579dc571d53a0658a154fbec"; // 黑商 Fence 的 tarkov.dev trader id（套利排除）
@@ -265,10 +268,15 @@ function toItem(it) {
     const rn = realName(it);
     if (rn) { shortName = rn; name = rn; }
   }
+  // 中文名：用物品模板 ID 查官方中文映射（js/zh_names.js，源自 SPT ch.json）；
+  // 未收录物品（2025-2026 新增/禁售等）回退英文名显示。
+  const zh = (typeof ZH_NAMES === "object" && ZH_NAMES[it.id]) || "";
+  const cnName = zh || shortName;
   return {
     id: it.id,
     shortName,
     name,
+    cnName,
     iconLink: it.iconLink || "",
     avg24hPrice: Number(it.avg24hPrice) || 0,
     low24hPrice: Number(it.low24hPrice) || 0,
@@ -342,7 +350,7 @@ function renderWatch() {
     const c = i.changeLast48hPercent;
     const st = alertState(i);
     return `<tr class="${alertCls(st)}">
-      <td>${icon(i)}${esc(i.shortName)} ${alertBadge(st)}</td>
+      <td>${icon(i)}${esc(i.cnName)} ${alertBadge(st)}</td>
       <td>${esc(gameCat(i))}</td>
       <td>${fmt(i.avg24hPrice)}</td>
       <td>${fmt(i.low24hPrice)}</td>
@@ -383,7 +391,7 @@ function renderHot() {
     const c = i.changeLast48hPercent;
     const inWatch = watch.includes(i.shortName);
     return `<tr>
-      <td>${icon(i)}${esc(i.shortName)} <button class="addsel" data-add="${esc(i.shortName)}" ${inWatch ? "disabled" : ""}>${inWatch ? "✓" : "＋"}</button></td>
+      <td>${icon(i)}${esc(i.cnName)} <button class="addsel" data-add="${esc(i.shortName)}" ${inWatch ? "disabled" : ""}>${inWatch ? "✓" : "＋"}</button></td>
       <td>${esc(gameCat(i))}</td>
       <td>${fmt(i.avg24hPrice)}</td>
       <td>${fmt(i.low24hPrice)}</td>
@@ -405,7 +413,7 @@ function renderArb() {
     return;
   }
   body.innerHTML = list.map(i => `<tr>
-    <td>${icon(i)}${esc(i.shortName)}</td>
+    <td>${icon(i)}${esc(i.cnName)}</td>
     <td>${esc(gameCat(i))}</td>
     <td>${fmt(i.lastLowPrice)}</td>
     <td>${fmt(i.bestTrader)}</td>
@@ -419,17 +427,20 @@ function renderArb() {
 function addToWatch() {
   const q = $("searchInput").value.trim().toLowerCase();
   if (!q) return;
-  const hit = items.find(i =>
-    i.shortName.toLowerCase() === q ||
-    (i.name && i.name.toLowerCase() === q) ||
-    (i.name && i.name.toLowerCase().includes(q)) ||
-    i.shortName.toLowerCase().includes(q)
-  );
+  const hit = items.find(i => {
+    const cn = (i.cnName || "").toLowerCase();
+    return i.shortName.toLowerCase() === q ||
+      (i.name && i.name.toLowerCase() === q) ||
+      cn === q ||
+      (i.name && i.name.toLowerCase().includes(q)) ||
+      i.shortName.toLowerCase().includes(q) ||
+      cn.includes(q);
+  });
   if (!hit) { $("watchHint").textContent = "未找到该物品"; return; }
   const key = hit.shortName;
   if (!watch.includes(key)) watch.push(key);
   localStorage.setItem(LS_KEY, JSON.stringify(watch));
-  $("watchHint").textContent = "已加入: " + hit.shortName;
+  $("watchHint").textContent = "已加入: " + (hit.cnName || hit.shortName);
   $("searchInput").value = "";
   renderWatch();
 }
@@ -457,7 +468,7 @@ function renderSearch() {
   const kws = raw.split("/").map(s => s.trim()).filter(Boolean);
   if (kws.length === 0) { body.innerHTML = ""; return; }
   const list = items.filter(i => {
-    const hay = (i.shortName + " " + (i.name || "")).toLowerCase();
+    const hay = ((i.cnName ? i.cnName + " " : "") + i.shortName + " " + (i.name || "")).toLowerCase();
     return kws.every(k => hay.includes(k));
   });
   const sorted = sortList(list, SEARCH_COLS, searchSort);
@@ -470,7 +481,7 @@ function renderSearch() {
     const c = i.changeLast48hPercent;
     const inWatch = watch.includes(i.shortName);
     return `<tr>
-      <td>${icon(i)}${esc(i.shortName)} <button class="addsel" data-add="${esc(i.shortName)}" ${inWatch ? "disabled" : ""}>${inWatch ? "✓" : "＋"}</button></td>
+      <td>${icon(i)}${esc(i.cnName)} <button class="addsel" data-add="${esc(i.shortName)}" ${inWatch ? "disabled" : ""}>${inWatch ? "✓" : "＋"}</button></td>
       <td>${esc(gameCat(i))}</td>
       <td>${fmt(i.avg24hPrice)}</td>
       <td>${fmt(i.low24hPrice)}</td>
