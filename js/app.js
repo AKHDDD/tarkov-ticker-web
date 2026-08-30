@@ -434,6 +434,55 @@ function addToWatch() {
   renderWatch();
 }
 
+/* ---- 全局搜索（搜索 Tab）：跨全量物品模糊匹配，/ 分隔多关键词叠加过滤 ---- */
+let searchSort = { key: null, dir: "desc", abs: false };
+const SEARCH_COLS = {
+  type:   { get: i => gameCat(i) },
+  avg:    { get: i => i.avg24hPrice },
+  low:    { get: i => i.low24hPrice },
+  high:   { get: i => i.high24hPrice },
+  price:  { get: i => i.lastLowPrice },
+  chg:    { get: i => i.changeLast48hPercent, absFirst: true },
+  offers: { get: i => i.lastOfferCount }
+};
+function renderSearch() {
+  const body = $("searchBody");
+  const hint = $("searchHint");
+  const raw = ($("searchAllInput").value || "").trim().toLowerCase();
+  if (!raw) {
+    body.innerHTML = '<tr><td colspan="9" class="empty">输入关键词搜索全部物品（中英文均可），/ 分隔多个关键词可叠加过滤</td></tr>';
+    if (hint) hint.textContent = "";
+    return;
+  }
+  const kws = raw.split("/").map(s => s.trim()).filter(Boolean);
+  if (kws.length === 0) { body.innerHTML = ""; return; }
+  const list = items.filter(i => {
+    const hay = (i.shortName + " " + (i.name || "")).toLowerCase();
+    return kws.every(k => hay.includes(k));
+  });
+  const sorted = sortList(list, SEARCH_COLS, searchSort);
+  if (hint) hint.textContent = "匹配 " + list.length + " 件";
+  if (sorted.length === 0) {
+    body.innerHTML = '<tr><td colspan="9" class="empty">未找到匹配物品</td></tr>';
+    return;
+  }
+  body.innerHTML = sorted.map(i => {
+    const c = i.changeLast48hPercent;
+    const inWatch = watch.includes(i.shortName);
+    return `<tr>
+      <td>${icon(i)}${esc(i.shortName)} <button class="addsel" data-add="${esc(i.shortName)}" ${inWatch ? "disabled" : ""}>${inWatch ? "✓" : "＋"}</button></td>
+      <td>${esc(gameCat(i))}</td>
+      <td>${fmt(i.avg24hPrice)}</td>
+      <td>${fmt(i.low24hPrice)}</td>
+      <td>${fmt(i.high24hPrice)}</td>
+      <td class="${i._chg ? "f-" + i._chg : ""}">${fmt(i.lastLowPrice)}</td>
+      <td class="${cls(c)}">${pct(c)}</td>
+      <td>${fmt(i.lastOfferCount)}</td>
+    </tr>`;
+  }).join("");
+  paintSort("#panel-search", searchSort);
+}
+
 /* ---- 刷新流程 ---- */
 async function load() {
   const btn = $("btnRefresh");
@@ -443,7 +492,7 @@ async function load() {
   if (freshCache && items.length === 0) {
     items = freshCache;
     markChanges();
-    renderWatch(); renderHot(); renderArb(); collectTypes();
+    renderWatch(); renderHot(); renderArb(); renderSearch(); collectTypes();
     $("gameVersion").textContent = GAME_MODES[gameMode] + " · " + freshCache.length + " 件物品（缓存）";
     $("lastUpdate").textContent = now();
   }
@@ -473,7 +522,7 @@ function setGameMode(mode) {
   items = [];       // 清空旧服数据，防止跨服串数据
   prevPrice = {};   // 重置价格变动对比，避免跨服误报跳动
   $("gameVersion").textContent = GAME_MODES[gameMode] + " · 切换中...";
-  renderWatch(); renderHot(); renderArb();
+  renderWatch(); renderHot(); renderArb(); renderSearch();
   load();           // 重新拉取当前服（有该服缓存则秒出）
 }
 
@@ -484,6 +533,10 @@ document.querySelectorAll(".tab").forEach(tab => {
     document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
     tab.classList.add("active");
     $("panel-" + tab.dataset.tab).classList.add("active");
+    if (tab.dataset.tab === "search") {
+      const si = $("searchAllInput");
+      if (si) { si.focus(); renderSearch(); }
+    }
   });
 });
 
@@ -491,6 +544,11 @@ document.querySelectorAll(".tab").forEach(tab => {
 $("btnRefresh").addEventListener("click", load);
 $("btnAdd").addEventListener("click", addToWatch);
 $("searchInput").addEventListener("keydown", e => { if (e.key === "Enter") addToWatch(); });
+/* 全局搜索：输入即过滤 */
+$("searchAllInput").addEventListener("input", renderSearch);
+$("searchAllInput").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); renderSearch(); }
+});
 /* 服务器切换：三服按钮组 */
 document.querySelectorAll(".mode-btn").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -522,6 +580,7 @@ document.addEventListener("click", e => {
       localStorage.setItem(LS_KEY, JSON.stringify(watch));
       renderWatch();
       renderHot();
+      renderSearch();
       updateAlert();
     }
   }
@@ -531,5 +590,6 @@ document.addEventListener("click", e => {
 bindSort("#panel-watch", WATCH_COLS, watchSort, renderWatch);
 bindSort("#panel-hot", HOT_COLS, hotSort, renderHot);
 bindSort("#panel-arb", ARB_COLS, arbSort, renderArb);
+bindSort("#panel-search", SEARCH_COLS, searchSort, renderSearch);
 load();
 setInterval(load, REFRESH_MS);

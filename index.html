@@ -36,6 +36,7 @@
   <button class="tab active" data-tab="watch">自选</button>
   <button class="tab" data-tab="hot">热榜</button>
   <button class="tab" data-tab="arb">套利</button>
+  <button class="tab" data-tab="search">搜索</button>
 </nav>
 
 <div class="filterbar">
@@ -94,6 +95,19 @@
       <tbody id="arbBody"></tbody>
     </table>
   </section>
+
+  <section id="panel-search" class="panel">
+    <div class="toolbar">
+      <input id="searchAllInput" type="text" placeholder="搜索全部物品（中英文均可，支持 / 分隔多关键词），如：bitcoin / gpu / ledx / m870...">
+      <span class="hint" id="searchHint"></span>
+    </div>
+    <table class="grid">
+      <thead>
+        <tr><th>物品</th><th data-sort="type" class="sortable">类型</th><th data-sort="avg" class="sortable">均价 24h</th><th data-sort="low" class="sortable">低点 24h</th><th data-sort="high" class="sortable">高点 24h</th><th data-sort="price" class="sortable">当前最低</th><th data-sort="chg" class="sortable">涨跌 48h</th><th data-sort="offers" class="sortable">在售</th><th></th></tr>
+      </thead>
+      <tbody id="searchBody"></tbody>
+    </table>
+  </section>
 </main>
 
 <!-- 底部广告位：部署后把本行替换为 AdSense 广告代码 -->
@@ -104,6 +118,6 @@
   <p><a href="privacy-policy.html">隐私政策</a></p>
 </footer>
 
-<script src="js/app.js?v=12"></script>
+<script src="js/app.js?v=13"></script>
 </body>
 </html>
