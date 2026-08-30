@@ -240,6 +240,13 @@ function toItem(it) {
   let chgPct = it.changeLast48hPercent ?? 0;
   const chgAbs = Number(it.changeLast48h) || 0;
   if (chgAbs !== 0 && (price - chgAbs <= 0 || Math.abs(chgPct) > 1000)) chgPct = null;
+  // 冷门样本坍缩保护：在售挂单 ≤1 且 24h 四价完全相同（统计坍缩为单一挂单价）时，
+  // 涨跌百分比是单点噪声、无统计意义，同样视为不可信显示 "-"
+  if (chgPct != null && (it.lastOfferCount ?? 0) <= 1) {
+    const vals = [Number(it.avg24hPrice) || 0, Number(it.low24hPrice) || 0, Number(it.high24hPrice) || 0, price];
+    const present = vals.filter(v => v > 0);
+    if (present.length > 0 && new Set(present).size === 1) chgPct = null;
+  }
   let best = 0;
   for (const s of (it.sellToTrader || [])) {
     const v = String(s.trader || "");
