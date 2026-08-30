@@ -240,12 +240,16 @@ function toItem(it) {
   let chgPct = it.changeLast48hPercent ?? 0;
   const chgAbs = Number(it.changeLast48h) || 0;
   if (chgAbs !== 0 && (price - chgAbs <= 0 || Math.abs(chgPct) > 1000)) chgPct = null;
-  // 冷门样本坍缩保护：在售挂单 ≤1 且 24h 四价完全相同（统计坍缩为单一挂单价）时，
-  // 涨跌百分比是单点噪声、无统计意义，同样视为不可信显示 "-"
-  if (chgPct != null && (it.lastOfferCount ?? 0) <= 1) {
-    const vals = [Number(it.avg24hPrice) || 0, Number(it.low24hPrice) || 0, Number(it.high24hPrice) || 0, price];
-    const present = vals.filter(v => v > 0);
-    if (present.length > 0 && new Set(present).size === 1) chgPct = null;
+  // 冷门样本坍缩/稀疏保护：涨跌幅放大到无统计意义时视为不可信显示 "-"
+  // 判据（仅当 |pct|>100 时才触发，避免误伤小波动）：
+  //  a) 在售挂单 ≤2：挂单极少，价格由个别样本决定，百分比是稀疏样本噪声；
+  //  b) 48h 前基价占当前价 <10%：当前价相对 48h 前基价暴涨 10 倍以上，
+  //     低基数把涨跌百分比放大失真（即使该物品在售较多）。
+  if (chgPct != null && Math.abs(chgPct) > 100) {
+    const offers = it.lastOfferCount ?? 0;
+    const base = price - chgAbs; // 48h 前基价 ≈ 当前最低价 − 48h 绝对变动
+    const ratio = price > 0 ? base / price : 0;
+    if (offers <= 2 || ratio < 0.1) chgPct = null;
   }
   let best = 0;
   for (const s of (it.sellToTrader || [])) {
